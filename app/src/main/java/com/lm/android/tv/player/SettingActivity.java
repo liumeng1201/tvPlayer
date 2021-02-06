@@ -2,24 +2,110 @@ package com.lm.android.tv.player;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.util.Log;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.blankj.utilcode.util.AppUtils;
+import com.blankj.utilcode.util.FileUtils;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.lm.android.tv.player.model.CategoryModel;
+import com.lm.android.tv.player.model.UpdateModel;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+
+import javax.net.ssl.HttpsURLConnection;
+
 public class SettingActivity extends Activity {
     private static final String TAG = "Player";
 
-    private String[] settings = {"单次播放", "每日播放", "更新"};
+    private String[] settings = {"单次播放", "每日播放", "检查更新"};
     public static final String PROPERTY_SINGLE_PLAY = "single_play";
     public static final String PROPERTY_DAY_PLAY = "day_play";
 
     private SharedPreferences sharedPreferences;
     private BaseRecyclerAdapter adapter;
+
+    private ProgressDialog loadingDialog;
+
+    private Handler handler = new Handler() {
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            super.handleMessage(msg);
+
+            if (msg.what == 1000) {
+                String json = msg.getData().getString("json");
+                final UpdateModel update = new Gson().fromJson(json, new TypeToken<UpdateModel>() {
+                }.getType());
+
+                if (update.versionCode > BuildConfig.VERSION_CODE) {
+                    AlertDialog.Builder builder = new AlertDialog.Builder(SettingActivity.this);
+                    builder.setTitle("检查更新")
+                            .setMessage("当前版本：" + BuildConfig.VERSION_NAME + "\n检测到新版本：" + update.versionName + "\n是否升级？")
+                            .setPositiveButton("升级", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialogInterface, int i) {
+                                    loadingDialog = new ProgressDialog(SettingActivity.this);
+                                    loadingDialog.setMessage("下载中，请稍后...");
+                                    loadingDialog.show();
+                                    String filePath = getExternalFilesDir(null).getAbsolutePath() + "/apk/app-release.apk";
+                                    DownloadRunnable downloadRunnable = new DownloadRunnable(update.downloadUrl, filePath);
+                                    new Thread(downloadRunnable).start();
+                                }
+                            });
+                    builder.create().show();
+                } else {
+                    Toast.makeText(SettingActivity.this, "已是最新版本", Toast.LENGTH_LONG).show();
+                }
+            } else if (msg.what == 1001) {
+                if (loadingDialog != null && loadingDialog.isShowing()) {
+                    loadingDialog.dismiss();
+                }
+                String filePath = msg.getData().getString("filePath");
+                AppUtils.installApp(filePath);
+            }
+        }
+    };
+
+    Runnable runnable = new Runnable() {
+        @Override
+        public void run() {
+            getData("https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/update.json");
+        }
+    };
+
+    class DownloadRunnable implements Runnable {
+        String url;
+        String filePath;
+
+        public DownloadRunnable(String url, String filePath) {
+            this.url = url;
+            this.filePath = filePath;
+        }
+
+        @Override
+        public void run() {
+            download(url, filePath);
+        }
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -37,6 +123,8 @@ public class SettingActivity extends Activity {
                     content = content + " " + getValue(PROPERTY_SINGLE_PLAY) + " 集";
                 } else if (position == 1) {
                     content = content + " " + getValue(PROPERTY_DAY_PLAY) + " 集";
+                } else if (position == 2) {
+                    content = content + "    " + "当前版本：" + BuildConfig.VERSION_NAME;
                 }
                 textView.setText(content);
             }
@@ -56,6 +144,8 @@ public class SettingActivity extends Activity {
             public void onItemClick(@NonNull int position) {
                 if (position == 0 || position == 1) {
                     showNumSelectDialog(position);
+                } else if (position == 2) {
+                    new Thread(runnable).start();
                 }
             }
         });
@@ -91,4 +181,71 @@ public class SettingActivity extends Activity {
         builder.create().show();
     }
 
+    private void getData(String urlString) {
+        BufferedReader reader = null;
+        HttpsURLConnection urlConnection = null;
+        try {
+            java.net.URL url = new java.net.URL(urlString);
+            urlConnection = (HttpsURLConnection) url.openConnection();
+            reader = new BufferedReader(new InputStreamReader(urlConnection.getInputStream(), "utf-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            String json = sb.toString();
+            Message msg = new Message();
+            Bundle data = new Bundle();
+            data.putString("json", json);
+            msg.setData(data);
+            msg.what = 1000;
+            handler.sendMessage(msg);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            urlConnection.disconnect();
+            if (null != reader) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    Log.e(TAG, "JSON feed closed", e);
+                }
+            }
+        }
+    }
+
+    private void download(String urlString, String filePath) {
+        HttpsURLConnection urlConnection = null;
+        try {
+            java.net.URL url = new java.net.URL(urlString);
+            urlConnection = (HttpsURLConnection) url.openConnection();
+
+            FileUtils.createFileByDeleteOldFile(filePath);
+            File file = new File(filePath);
+            FileOutputStream outputStream = new FileOutputStream(file);
+
+            InputStream inputStream = urlConnection.getInputStream();
+            BufferedInputStream bfi = new BufferedInputStream(inputStream);
+            byte[] bytes = new byte[1024];
+            int len;
+            while ((len = bfi.read(bytes)) != -1) {
+                outputStream.write(bytes, 0, len);
+            }
+
+            outputStream.close();
+            inputStream.close();
+            bfi.close();
+
+            Message msg = new Message();
+            Bundle data = new Bundle();
+            data.putString("filePath", filePath);
+            msg.setData(data);
+            msg.what = 1001;
+            handler.sendMessage(msg);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            urlConnection.disconnect();
+        }
+    }
 }

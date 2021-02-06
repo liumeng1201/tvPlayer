@@ -3,7 +3,6 @@ package com.lm.android.tv.player;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.KeyEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -42,14 +41,12 @@ public class PlayActivity extends Activity {
         sharedPreferences = getSharedPreferences("player", MODE_PRIVATE);
         // 单次可播放次数
         final int single_play = sharedPreferences.getInt(SettingActivity.PROPERTY_SINGLE_PLAY, 2);
-        Log.d(TAG, "single_play=" + single_play);
 
         long todayTime = System.currentTimeMillis() / 1000 / (60 * 60 * 24);
         // 每日已播放次数
         int todayPlayCount = sharedPreferences.getInt(String.valueOf(todayTime), 0);
         // 单日可播放次数
         int day_play = sharedPreferences.getInt(SettingActivity.PROPERTY_DAY_PLAY, 2);
-        Log.d(TAG, "day_play=" + day_play);
         if (todayPlayCount >= day_play) {
             Toast.makeText(this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
             finish();
@@ -77,7 +74,6 @@ public class PlayActivity extends Activity {
             public void onCompletion() {
                 position = position + 1;
                 int start = getIntent().getIntExtra("position", 0) + single_play;
-                Log.d(TAG, "position=" + position + "       " + "start=" + start);
                 if (position >= start) {
                     Toast.makeText(PlayActivity.this, "小朋友，休息一下吧", Toast.LENGTH_LONG).show();
                     finish();
