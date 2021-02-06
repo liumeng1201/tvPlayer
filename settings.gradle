@@ -1,0 +1,3 @@
+include ':datagenerate'
+include ':app'
+rootProject.name = "Player"

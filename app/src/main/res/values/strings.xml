@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Player</string>
+    <string name="title_activity_main">Leanback Title</string>
+    <string name="browse_title">Videos by Your Company</string>
+</resources>
