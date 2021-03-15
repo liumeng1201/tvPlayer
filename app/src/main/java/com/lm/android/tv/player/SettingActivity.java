@@ -167,7 +167,7 @@ public class SettingActivity extends Activity {
 
     private void showNumSelectDialog(final int type) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("请选择").setItems(new String[]{"1", "2", "3", "4", "5", "6"}, new DialogInterface.OnClickListener() {
+        builder.setTitle("请选择").setItems(new String[]{"1", "2", "3", "4", "5", "6", "7", "8", "9", "不限制"}, new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialogInterface, int i) {
                 if (type == 0) {

@@ -14,6 +14,8 @@ import androidx.annotation.NonNull;
 import com.aliyun.player.AliPlayer;
 import com.aliyun.player.AliPlayerFactory;
 import com.aliyun.player.IPlayer;
+import com.aliyun.player.bean.InfoBean;
+import com.aliyun.player.bean.InfoCode;
 import com.aliyun.player.source.UrlSource;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -32,6 +34,9 @@ public class PlayActivity extends Activity {
     private TextView header;
 
     private SharedPreferences sharedPreferences;
+    private int single_play;
+    private int day_play;
+    private long currentPositon;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -40,13 +45,19 @@ public class PlayActivity extends Activity {
 
         sharedPreferences = getSharedPreferences("player", MODE_PRIVATE);
         // 单次可播放次数
-        final int single_play = sharedPreferences.getInt(SettingActivity.PROPERTY_SINGLE_PLAY, 2);
+        single_play = sharedPreferences.getInt(SettingActivity.PROPERTY_SINGLE_PLAY, 2);
+        if (single_play == 10) {
+            single_play = Integer.MAX_VALUE;
+        }
 
         long todayTime = System.currentTimeMillis() / 1000 / (60 * 60 * 24);
         // 每日已播放次数
         int todayPlayCount = sharedPreferences.getInt(String.valueOf(todayTime), 0);
         // 单日可播放次数
-        int day_play = sharedPreferences.getInt(SettingActivity.PROPERTY_DAY_PLAY, 2);
+        day_play = sharedPreferences.getInt(SettingActivity.PROPERTY_DAY_PLAY, 2);
+        if (day_play == 10) {
+            day_play = Integer.MAX_VALUE;
+        }
         if (todayPlayCount >= day_play) {
             Toast.makeText(this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
             finish();
@@ -67,6 +78,14 @@ public class PlayActivity extends Activity {
             @Override
             public void onStateChanged(int state) {
                 playerState = state;
+            }
+        });
+        aliyunVodPlayer.setOnInfoListener(new IPlayer.OnInfoListener() {
+            @Override
+            public void onInfo(InfoBean infoBean) {
+                if (infoBean.getCode() == InfoCode.CurrentPosition) {
+                    currentPositon = infoBean.getExtraValue();
+                }
             }
         });
         aliyunVodPlayer.setOnCompletionListener(new IPlayer.OnCompletionListener() {
@@ -135,6 +154,10 @@ public class PlayActivity extends Activity {
             } else if (playerState == IPlayer.paused) {
                 aliyunVodPlayer.start();
             }
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            aliyunVodPlayer.seekTo(currentPositon - 5000);
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            aliyunVodPlayer.seekTo(currentPositon + 5000);
         }
         return super.onKeyDown(keyCode, event);
     }
