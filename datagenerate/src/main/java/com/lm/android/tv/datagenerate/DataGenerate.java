@@ -26,7 +26,8 @@ public class DataGenerate {
             "./datagenerate/src/main/asserts/s4.csv",
             "./datagenerate/src/main/asserts/s5.csv",
             "./datagenerate/src/main/asserts/s6.csv",
-            "./datagenerate/src/main/asserts/peppaen.csv"
+            "./datagenerate/src/main/asserts/peppaen.csv",
+            "./datagenerate/src/main/asserts/jojo-top10.csv"
     };
     private String[] categoryNames = {
             "小猪佩奇 第1季",
@@ -35,7 +36,8 @@ public class DataGenerate {
             "小猪佩奇 第4季",
             "小猪佩奇 第5季",
             "小猪佩奇 第6季",
-            "小猪佩奇 英语课堂"
+            "小猪佩奇 英语课堂",
+            "超级宝贝JOJO Top10歌曲"
     };
 
     public static List<String> readFile2List(File file) {
@@ -100,10 +102,12 @@ public class DataGenerate {
             String s = ss[si];
             Category category = new Category();
             category.name = categoryNames[si];
-            if (si < ss.length - 2) {
-                category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/peppapig.jpg";
-            } else {
+            if (si == 6) {
                 category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/peppapigen.webp";
+            } else if (si == 7) {
+                category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/jojo.jpg";
+            } else {
+                category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/peppapig.jpg";
             }
             category.videos = new ArrayList<>();
             List<String> lines = readFile2List(new File(s));
