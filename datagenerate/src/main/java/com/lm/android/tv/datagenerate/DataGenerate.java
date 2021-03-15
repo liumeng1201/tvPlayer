@@ -9,6 +9,10 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +25,17 @@ public class DataGenerate {
             "./datagenerate/src/main/asserts/s3.csv",
             "./datagenerate/src/main/asserts/s4.csv",
             "./datagenerate/src/main/asserts/s5.csv",
-            "./datagenerate/src/main/asserts/s6.csv"
+            "./datagenerate/src/main/asserts/s6.csv",
+            "./datagenerate/src/main/asserts/peppaen.csv"
+    };
+    private String[] categoryNames = {
+            "小猪佩奇 第1季",
+            "小猪佩奇 第2季",
+            "小猪佩奇 第3季",
+            "小猪佩奇 第4季",
+            "小猪佩奇 第5季",
+            "小猪佩奇 第6季",
+            "小猪佩奇 英语课堂"
     };
 
     public static List<String> readFile2List(File file) {
@@ -79,13 +93,18 @@ public class DataGenerate {
         }
     }
 
-    private void generateJson() {
+    private void generateJson() throws UnsupportedEncodingException {
         ArrayList<Category> categories = new ArrayList<>();
 
-        for (String s : ss) {
+        for (int si = 0; si < ss.length; si++) {
+            String s = ss[si];
             Category category = new Category();
-            category.name = "category_name";
-            category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/peppapig.jpg";
+            category.name = categoryNames[si];
+            if (si < ss.length - 2) {
+                category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/peppapig.jpg";
+            } else {
+                category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/peppapigen.webp";
+            }
             category.videos = new ArrayList<>();
             List<String> lines = readFile2List(new File(s));
             if (lines != null && lines.size() > 0) {
@@ -96,7 +115,8 @@ public class DataGenerate {
 
                     String[] strs = video.video.split("/");
                     String name = strs[strs.length - 1];
-                    video.name = name.substring(0, name.lastIndexOf(".mp4")).replaceAll("%20", " ");
+                    String videoname = URLDecoder.decode(name.substring(0, name.lastIndexOf(".mp4")), "UTF-8");
+                    video.name = videoname;//name.substring(0, name.lastIndexOf(".mp4")).replaceAll("%20", " ");
 
                     category.videos.add(video);
                 }
@@ -109,6 +129,10 @@ public class DataGenerate {
     }
 
     public static void main(String[] args) {
-        new DataGenerate().generateJson();
+        try {
+            new DataGenerate().generateJson();
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
     }
 }
