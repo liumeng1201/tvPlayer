@@ -37,9 +37,10 @@ import javax.net.ssl.HttpsURLConnection;
 public class SettingActivity extends Activity {
     private static final String TAG = "Player";
 
-    private String[] settings = {"单次播放", "每日播放", "检查更新"};
+    private String[] settings = {"单次播放", "每日播放", "播放方式", "检查更新"};
     public static final String PROPERTY_SINGLE_PLAY = "single_play";
     public static final String PROPERTY_DAY_PLAY = "day_play";
+    public static final String PROPERTY_PLAY_MODE = "play_mode";
 
     private SharedPreferences sharedPreferences;
     private BaseRecyclerAdapter adapter;
@@ -120,10 +121,12 @@ public class SettingActivity extends Activity {
                 TextView textView = holder.itemView.findViewById(R.id.text);
                 String content = settings[position];
                 if (position == 0) {
-                    content = content + " " + getValue(PROPERTY_SINGLE_PLAY) + " 集";
+                    content = content + "  " + (getValue(PROPERTY_SINGLE_PLAY) == 10 ? "不限制" : (getValue(PROPERTY_SINGLE_PLAY) + " 集"));
                 } else if (position == 1) {
-                    content = content + " " + getValue(PROPERTY_DAY_PLAY) + " 集";
+                    content = content + "  " + (getValue(PROPERTY_DAY_PLAY) == 10 ? "不限制" : (getValue(PROPERTY_DAY_PLAY) + " 集"));
                 } else if (position == 2) {
+                    content = content + "  " + (getValue(PROPERTY_PLAY_MODE) == 0 ? "列表循环" : "单集循环");
+                } else if (position == 3) {
                     content = content + "    " + "当前版本：" + BuildConfig.VERSION_NAME;
                 }
                 textView.setText(content);
@@ -145,6 +148,8 @@ public class SettingActivity extends Activity {
                 if (position == 0 || position == 1) {
                     showNumSelectDialog(position);
                 } else if (position == 2) {
+                    showPlayModeSelectDialog();
+                } else if (position == 3) {
                     new Thread(runnable).start();
                 }
             }
@@ -162,6 +167,9 @@ public class SettingActivity extends Activity {
     }
 
     private int getValue(String key) {
+        if (key.equalsIgnoreCase(PROPERTY_PLAY_MODE)) {
+            return sharedPreferences.getInt(key, 0);
+        }
         return sharedPreferences.getInt(key, 2);
     }
 
@@ -175,6 +183,18 @@ public class SettingActivity extends Activity {
                 } else if (type == 1) {
                     setValue(PROPERTY_DAY_PLAY, i + 1);
                 }
+                adapter.notifyDataSetChanged();
+            }
+        });
+        builder.create().show();
+    }
+
+    private void showPlayModeSelectDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("请选择").setItems(new String[]{"列表循环", "单集循环"}, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                setValue(PROPERTY_PLAY_MODE, i);
                 adapter.notifyDataSetChanged();
             }
         });

@@ -34,9 +34,13 @@ public class PlayActivity extends Activity {
     private TextView header;
 
     private SharedPreferences sharedPreferences;
-    private int single_play;
-    private int day_play;
+    private int play_mode;
+    private int single_play_num;
+    private int day_play_num;
     private long currentPositon;
+
+    private int todayPlayCount;
+    private int singlePlayCount;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -44,21 +48,24 @@ public class PlayActivity extends Activity {
         setContentView(R.layout.activity_play);
 
         sharedPreferences = getSharedPreferences("player", MODE_PRIVATE);
+        // 播放模式,0:列表循环,1:单集循环
+        play_mode = sharedPreferences.getInt(SettingActivity.PROPERTY_PLAY_MODE, 0);
+
         // 单次可播放次数
-        single_play = sharedPreferences.getInt(SettingActivity.PROPERTY_SINGLE_PLAY, 2);
-        if (single_play == 10) {
-            single_play = Integer.MAX_VALUE;
+        single_play_num = sharedPreferences.getInt(SettingActivity.PROPERTY_SINGLE_PLAY, 2);
+        if (single_play_num == 10) {
+            single_play_num = Integer.MAX_VALUE;
         }
 
-        long todayTime = System.currentTimeMillis() / 1000 / (60 * 60 * 24);
+        singlePlayCount = 0;
         // 每日已播放次数
-        int todayPlayCount = sharedPreferences.getInt(String.valueOf(todayTime), 0);
+        todayPlayCount = sharedPreferences.getInt(String.valueOf(System.currentTimeMillis() / 1000 / (60 * 60 * 24)), 0);
         // 单日可播放次数
-        day_play = sharedPreferences.getInt(SettingActivity.PROPERTY_DAY_PLAY, 2);
-        if (day_play == 10) {
-            day_play = Integer.MAX_VALUE;
+        day_play_num = sharedPreferences.getInt(SettingActivity.PROPERTY_DAY_PLAY, 2);
+        if (day_play_num == 10) {
+            day_play_num = Integer.MAX_VALUE;
         }
-        if (todayPlayCount >= day_play) {
+        if (todayPlayCount >= day_play_num) {
             Toast.makeText(this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
             finish();
         }
@@ -91,21 +98,39 @@ public class PlayActivity extends Activity {
         aliyunVodPlayer.setOnCompletionListener(new IPlayer.OnCompletionListener() {
             @Override
             public void onCompletion() {
-                position = position + 1;
-                int start = getIntent().getIntExtra("position", 0) + single_play;
-                if (position >= start) {
-                    Toast.makeText(PlayActivity.this, "小朋友，休息一下吧", Toast.LENGTH_LONG).show();
+                singlePlayCount = singlePlayCount + 1;
+                todayPlayCount = todayPlayCount + 1;
+
+                if (todayPlayCount >= day_play_num) {
+                    Toast.makeText(PlayActivity.this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
                     finish();
                 } else {
-                    if (position < videos.size()) {
-                        UrlSource urlSource = new UrlSource();
-                        header.setText(videos.get(position).name);
-                        urlSource.setUri(videos.get(position).video);
-                        aliyunVodPlayer.setDataSource(urlSource);
-                        aliyunVodPlayer.prepare();
-                        aliyunVodPlayer.start();
-                    } else {
+                    if (singlePlayCount >= single_play_num) {
+                        Toast.makeText(PlayActivity.this, "小朋友，休息一下吧", Toast.LENGTH_LONG).show();
                         finish();
+                    } else {
+                        if (play_mode == 0) {
+                            // 列表循环
+                            position = position + 1;
+                            if (position < videos.size()) {
+                                UrlSource urlSource = new UrlSource();
+                                header.setText(videos.get(position).name);
+                                urlSource.setUri(videos.get(position).video);
+                                aliyunVodPlayer.setDataSource(urlSource);
+                                aliyunVodPlayer.prepare();
+                                aliyunVodPlayer.start();
+                            } else {
+                                finish();
+                            }
+                        } else {
+                            // 单集循环
+                            UrlSource urlSource = new UrlSource();
+                            header.setText(videos.get(position).name);
+                            urlSource.setUri(videos.get(position).video);
+                            aliyunVodPlayer.setDataSource(urlSource);
+                            aliyunVodPlayer.prepare();
+                            aliyunVodPlayer.start();
+                        }
                     }
                 }
             }
@@ -134,8 +159,6 @@ public class PlayActivity extends Activity {
                 aliyunVodPlayer.setDisplay(null);
             }
         });
-
-        setValue(String.valueOf(todayTime), todayPlayCount + 1);
     }
 
     private void setValue(String key, int value) {
@@ -179,6 +202,9 @@ public class PlayActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
+        setValue(String.valueOf(System.currentTimeMillis() / 1000 / (60 * 60 * 24)), todayPlayCount);
+
         aliyunVodPlayer.stop();
         aliyunVodPlayer.release();
     }
