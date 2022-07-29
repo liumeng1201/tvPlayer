@@ -20,24 +20,18 @@ import java.util.List;
 public class DataGenerate {
 
     private String[] ss = {
-            "./datagenerate/src/main/asserts/s1.csv",
-            "./datagenerate/src/main/asserts/s2.csv",
-            "./datagenerate/src/main/asserts/s3.csv",
-            "./datagenerate/src/main/asserts/s4.csv",
-            "./datagenerate/src/main/asserts/s5.csv",
-            "./datagenerate/src/main/asserts/s6.csv",
-            "./datagenerate/src/main/asserts/peppaen.csv",
-            "./datagenerate/src/main/asserts/jojo-top10.csv"
+            "./datagenerate/src/main/asserts/s21.csv",
+            "./datagenerate/src/main/asserts/s31.csv",
+            "./datagenerate/src/main/asserts/s41.csv",
+            "./datagenerate/src/main/asserts/s51.csv",
+            "./datagenerate/src/main/asserts/s61.csv"
     };
     private String[] categoryNames = {
-            "小猪佩奇 第1季",
-            "小猪佩奇 第2季",
-            "小猪佩奇 第3季",
-            "小猪佩奇 第4季",
-            "小猪佩奇 第5季",
-            "小猪佩奇 第6季",
-            "小猪佩奇 英语课堂",
-            "超级宝贝JOJO Top10歌曲"
+            "可爱巧虎岛 第2季",
+            "可爱巧虎岛 第3季",
+            "可爱巧虎岛 第4季",
+            "可爱巧虎岛 第5季",
+            "可爱巧虎岛 第6季"
     };
 
     public static List<String> readFile2List(File file) {
@@ -107,7 +101,7 @@ public class DataGenerate {
             } else if (si == 7) {
                 category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/jojo.jpg";
             } else {
-                category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/peppapig.jpg";
+                category.cover = "https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/PeppaPig/%E5%B7%A7%E8%99%8E%E5%8F%AF%E7%88%B1%E5%B2%9B/qhd.jpg";
             }
             category.videos = new ArrayList<>();
             List<String> lines = readFile2List(new File(s));

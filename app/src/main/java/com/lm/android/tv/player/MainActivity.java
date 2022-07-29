@@ -99,6 +99,11 @@ public class MainActivity extends Activity {
         recyclerView = findViewById(R.id.category);
         recyclerView.setLayoutManager(new GridLayoutManager(this, 4));
         recyclerView.setAdapter(adapter);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
 
         new Thread(runnable).start();
     }
