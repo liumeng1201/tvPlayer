@@ -36,9 +36,16 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".CategoryActivity" />
-        <activity android:name=".PlayActivity" />
-        <activity android:name=".SettingActivity" />
+        <activity
+            android:name=".CategoryActivity"
+            android:launchMode="standard"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".PlayActivity"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".SettingActivity"
+            android:screenOrientation="landscape" />
     </application>
 
 </manifest>

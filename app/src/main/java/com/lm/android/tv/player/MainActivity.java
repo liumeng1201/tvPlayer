@@ -92,6 +92,7 @@ public class MainActivity extends Activity {
             public void onItemClick(@NonNull int position) {
                 Intent intent = new Intent(MainActivity.this, CategoryActivity.class);
                 intent.putExtra("json", gson.toJson(categorys.get(position)));
+                intent.putExtra("type", "category");
                 startActivity(intent);
             }
         });

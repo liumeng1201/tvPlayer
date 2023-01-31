@@ -2,8 +2,8 @@ package com.lm.android.tv.player.model;
 
 import java.util.ArrayList;
 
-public class CategoryModel {
+public class SubCategoryModel {
     public String name;
     public String cover;
-    public ArrayList<SubCategoryModel> videos = new ArrayList<>();
+    public ArrayList<VideoModel> videos = new ArrayList<>();
 }
