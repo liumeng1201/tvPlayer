@@ -22,6 +22,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Player">
         <activity
+            android:name=".ImageActivity"
+            android:exported="false" />
+        <activity
             android:name=".MainActivity"
             android:banner="@drawable/app_icon_your_company"
             android:icon="@drawable/app_icon_your_company"
@@ -35,7 +38,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <activity
             android:name=".CategoryActivity"
             android:launchMode="standard"

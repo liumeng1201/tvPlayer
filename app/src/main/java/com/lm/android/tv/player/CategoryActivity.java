@@ -3,6 +3,7 @@ package com.lm.android.tv.player;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -92,10 +93,17 @@ public class CategoryActivity extends Activity {
                     startActivity(intent);
                 }
                 if (subCategoryModel != null) {
-                    Intent intent = new Intent(CategoryActivity.this, PlayActivity.class);
-                    intent.putExtra("json", new Gson().toJson(subCategoryModel.videos));
-                    intent.putExtra("position", position);
-                    startActivity(intent);
+                    if (TextUtils.isEmpty(subCategoryModel.videos.get(position).video)) {
+                        Intent intent = new Intent(CategoryActivity.this, ImageActivity.class);
+                        intent.putExtra("json", new Gson().toJson(subCategoryModel.videos));
+                        intent.putExtra("position", position);
+                        startActivity(intent);
+                    } else {
+                        Intent intent = new Intent(CategoryActivity.this, PlayActivity.class);
+                        intent.putExtra("json", new Gson().toJson(subCategoryModel.videos));
+                        intent.putExtra("position", position);
+                        startActivity(intent);
+                    }
                 }
             }
         });

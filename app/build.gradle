@@ -10,8 +10,9 @@ android {
         applicationId "com.lm.android.tv.player"
         minSdkVersion 23
         targetSdkVersion 30
-        versionCode 8
-        versionName "1.8"
+        multiDexEnabled true
+        versionCode 9
+        versionName "1.9"
         ndk {
             abiFilters "armeabi-v7a"
         }
@@ -33,6 +34,11 @@ android {
             signingConfig signingConfigs.release
         }
     }
+
+    compileOptions {
+        sourceCompatibility 1.8
+        targetCompatibility 1.8
+    }
 }
 
 dependencies {
@@ -44,4 +50,6 @@ dependencies {
     implementation 'com.alivc.conan:AlivcConan:0.9.5'
 
     implementation 'com.blankj:utilcodex:1.30.5'
+    implementation 'com.google.android.material:material:1.4.+'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.3'
 }

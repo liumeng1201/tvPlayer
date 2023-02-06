@@ -3,6 +3,7 @@ package com.lm.android.tv.player;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -112,6 +113,9 @@ public class PlayActivity extends Activity {
                         if (play_mode == 0) {
                             // 列表循环
                             position = position + 1;
+                            while (position < videos.size() && TextUtils.isEmpty(videos.get(position).video)) {
+                                position = position + 1;
+                            }
                             if (position < videos.size()) {
                                 UrlSource urlSource = new UrlSource();
                                 header.setText(videos.get(position).name);
