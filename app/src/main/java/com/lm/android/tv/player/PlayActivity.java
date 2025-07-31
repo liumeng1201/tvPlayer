@@ -20,7 +20,7 @@ import com.aliyun.player.bean.InfoCode;
 import com.aliyun.player.source.UrlSource;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.lm.android.tv.player.model.VideoModel;
+import com.lm.android.tv.player.model.FileModel;
 
 import java.util.ArrayList;
 
@@ -28,7 +28,7 @@ public class PlayActivity extends Activity {
     private static final String TAG = "Player-PlayActivity";
 
     private int position;
-    private ArrayList<VideoModel> videos;
+    private ArrayList<FileModel> videos;
     private AliPlayer aliyunVodPlayer;
     private int playerState;
 
@@ -71,8 +71,9 @@ public class PlayActivity extends Activity {
             finish();
         }
 
+        String urlPath = getIntent().getStringExtra("parent");
         String json = getIntent().getStringExtra("json");
-        videos = new Gson().fromJson(json, new TypeToken<ArrayList<VideoModel>>() {
+        videos = new Gson().fromJson(json, new TypeToken<ArrayList<FileModel>>() {
         }.getType());
         position = getIntent().getIntExtra("position", 0);
 
@@ -113,13 +114,13 @@ public class PlayActivity extends Activity {
                         if (play_mode == 0) {
                             // 列表循环
                             position = position + 1;
-                            while (position < videos.size() && TextUtils.isEmpty(videos.get(position).video)) {
+                            while (position < videos.size() && TextUtils.isEmpty(videos.get(position).url)) {
                                 position = position + 1;
                             }
                             if (position < videos.size()) {
                                 UrlSource urlSource = new UrlSource();
                                 header.setText(videos.get(position).name);
-                                urlSource.setUri(videos.get(position).video);
+                                urlSource.setUri(Urls.serverUrl + urlPath + videos.get(position).url);
                                 aliyunVodPlayer.setDataSource(urlSource);
                                 aliyunVodPlayer.prepare();
                                 aliyunVodPlayer.start();
@@ -130,7 +131,7 @@ public class PlayActivity extends Activity {
                             // 单集循环
                             UrlSource urlSource = new UrlSource();
                             header.setText(videos.get(position).name);
-                            urlSource.setUri(videos.get(position).video);
+                            urlSource.setUri(Urls.serverUrl + urlPath + videos.get(position).url);
                             aliyunVodPlayer.setDataSource(urlSource);
                             aliyunVodPlayer.prepare();
                             aliyunVodPlayer.start();
@@ -141,7 +142,7 @@ public class PlayActivity extends Activity {
         });
 
         UrlSource urlSource = new UrlSource();
-        urlSource.setUri(videos.get(position).video);
+        urlSource.setUri(Urls.serverUrl + urlPath + videos.get(position).url);
         aliyunVodPlayer.setDataSource(urlSource);
         aliyunVodPlayer.setAutoPlay(true);
         aliyunVodPlayer.prepare();

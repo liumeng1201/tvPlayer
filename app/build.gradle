@@ -8,11 +8,11 @@ android {
 
     defaultConfig {
         applicationId "com.lm.android.tv.player"
-        minSdkVersion 23
+        minSdkVersion 19
         targetSdkVersion 30
         multiDexEnabled true
-        versionCode 9
-        versionName "1.9"
+        versionCode 20
+        versionName "2.0"
         ndk {
             abiFilters "armeabi-v7a"
         }
@@ -49,7 +49,7 @@ dependencies {
     implementation 'com.aliyun.sdk.android:AliyunPlayer:4.5.0-full'
     implementation 'com.alivc.conan:AlivcConan:0.9.5'
 
-    implementation 'com.blankj:utilcodex:1.30.5'
+    implementation 'com.blankj:utilcodex:1.31.1'
     implementation 'com.google.android.material:material:1.4.+'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.3'
 }
