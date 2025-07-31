@@ -20,7 +20,6 @@ import com.blankj.utilcode.util.AppUtils;
 import com.blankj.utilcode.util.FileUtils;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.lm.android.tv.player.model.CategoryModel;
 import com.lm.android.tv.player.model.UpdateModel;
 
 import java.io.BufferedInputStream;
@@ -30,7 +29,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
+import java.net.HttpURLConnection;
 
 import javax.net.ssl.HttpsURLConnection;
 
@@ -89,7 +88,7 @@ public class SettingActivity extends Activity {
     Runnable runnable = new Runnable() {
         @Override
         public void run() {
-            getData("https://enable-ireading.oss-cn-shanghai.aliyuncs.com/cartoon/update.json");
+            getData(Urls.serverUrl + "/update.json");
         }
     };
 
@@ -203,10 +202,10 @@ public class SettingActivity extends Activity {
 
     private void getData(String urlString) {
         BufferedReader reader = null;
-        HttpsURLConnection urlConnection = null;
+        HttpURLConnection urlConnection = null;
         try {
             java.net.URL url = new java.net.URL(urlString);
-            urlConnection = (HttpsURLConnection) url.openConnection();
+            urlConnection = (HttpURLConnection) url.openConnection();
             reader = new BufferedReader(new InputStreamReader(urlConnection.getInputStream(), "utf-8"));
             StringBuilder sb = new StringBuilder();
             String line;
@@ -235,10 +234,10 @@ public class SettingActivity extends Activity {
     }
 
     private void download(String urlString, String filePath) {
-        HttpsURLConnection urlConnection = null;
+        HttpURLConnection urlConnection = null;
         try {
             java.net.URL url = new java.net.URL(urlString);
-            urlConnection = (HttpsURLConnection) url.openConnection();
+            urlConnection = (HttpURLConnection) url.openConnection();
 
             FileUtils.createFileByDeleteOldFile(filePath);
             File file = new File(filePath);

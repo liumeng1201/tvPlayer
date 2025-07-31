@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">动画片</string>
-    <string name="title_activity_main">动画片</string>
+    <string name="app_name">儿童视频</string>
+    <string name="title_activity_main">儿童视频</string>
     <string name="browse_title">Videos by Your Company</string>
 </resources>
