@@ -5,8 +5,8 @@
     android:layout_height="match_parent"
     tools:ignore="MergeRootFrame">
 
-    <SurfaceView
-        android:id="@+id/play_view"
+    <xyz.doikki.videoplayer.player.VideoView
+        android:id="@+id/player"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

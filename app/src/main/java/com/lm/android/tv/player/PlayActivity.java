@@ -1,35 +1,30 @@
 package com.lm.android.tv.player;
 
+import static xyz.doikki.videoplayer.player.BaseVideoView.STATE_PAUSED;
+import static xyz.doikki.videoplayer.player.BaseVideoView.STATE_PLAYBACK_COMPLETED;
+
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
-
-import com.aliyun.player.AliPlayer;
-import com.aliyun.player.AliPlayerFactory;
-import com.aliyun.player.IPlayer;
-import com.aliyun.player.bean.InfoBean;
-import com.aliyun.player.bean.InfoCode;
-import com.aliyun.player.source.UrlSource;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.lm.android.tv.player.model.FileModel;
 
 import java.util.ArrayList;
 
+import xyz.doikki.videocontroller.StandardVideoController;
+import xyz.doikki.videoplayer.player.BaseVideoView;
+
 public class PlayActivity extends Activity {
     private static final String TAG = "Player-PlayActivity";
 
     private int position;
     private ArrayList<FileModel> videos;
-    private AliPlayer aliyunVodPlayer;
     private int playerState;
 
     private TextView header;
@@ -42,6 +37,8 @@ public class PlayActivity extends Activity {
 
     private int todayPlayCount;
     private int singlePlayCount;
+
+    private xyz.doikki.videoplayer.player.VideoView videoView;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -80,90 +77,55 @@ public class PlayActivity extends Activity {
         header = findViewById(R.id.title);
         header.setText(videos.get(position).name);
 
-        aliyunVodPlayer = AliPlayerFactory.createAliPlayer(getApplicationContext());
-        // 关闭循环播放
-        aliyunVodPlayer.setLoop(false);
-        aliyunVodPlayer.setOnStateChangedListener(new IPlayer.OnStateChangedListener() {
+        videoView = findViewById(R.id.player);
+        StandardVideoController videoController = new StandardVideoController(this);
+        videoController.addDefaultControlComponent(videos.get(position).name, false);
+        videoView.setVideoController(videoController);
+        videoView.setUrl(Urls.serverUrl + urlPath + videos.get(position).url);
+        videoView.addOnStateChangeListener(new BaseVideoView.SimpleOnStateChangeListener() {
             @Override
-            public void onStateChanged(int state) {
-                playerState = state;
-            }
-        });
-        aliyunVodPlayer.setOnInfoListener(new IPlayer.OnInfoListener() {
-            @Override
-            public void onInfo(InfoBean infoBean) {
-                if (infoBean.getCode() == InfoCode.CurrentPosition) {
-                    currentPositon = infoBean.getExtraValue();
-                }
-            }
-        });
-        aliyunVodPlayer.setOnCompletionListener(new IPlayer.OnCompletionListener() {
-            @Override
-            public void onCompletion() {
-                singlePlayCount = singlePlayCount + 1;
-                todayPlayCount = todayPlayCount + 1;
+            public void onPlayStateChanged(int playState) {
+                super.onPlayStateChanged(playState);
+                if (playState == STATE_PLAYBACK_COMPLETED) {
+                    // 播放完成
+                    singlePlayCount = singlePlayCount + 1;
+                    todayPlayCount = todayPlayCount + 1;
 
-                if (todayPlayCount >= day_play_num) {
-                    Toast.makeText(PlayActivity.this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
-                    finish();
-                } else {
-                    if (singlePlayCount >= single_play_num) {
-                        Toast.makeText(PlayActivity.this, "小朋友，休息一下吧", Toast.LENGTH_LONG).show();
+                    if (todayPlayCount >= day_play_num) {
+                        Toast.makeText(PlayActivity.this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
                         finish();
                     } else {
-                        if (play_mode == 0) {
-                            // 列表循环
-                            position = position + 1;
-                            while (position < videos.size() && TextUtils.isEmpty(videos.get(position).url)) {
-                                position = position + 1;
-                            }
-                            if (position < videos.size()) {
-                                UrlSource urlSource = new UrlSource();
-                                header.setText(videos.get(position).name);
-                                urlSource.setUri(Urls.serverUrl + urlPath + videos.get(position).url);
-                                aliyunVodPlayer.setDataSource(urlSource);
-                                aliyunVodPlayer.prepare();
-                                aliyunVodPlayer.start();
-                            } else {
-                                finish();
-                            }
+                        if (singlePlayCount >= single_play_num) {
+                            Toast.makeText(PlayActivity.this, "小朋友，休息一下吧", Toast.LENGTH_LONG).show();
+                            finish();
                         } else {
-                            // 单集循环
-                            UrlSource urlSource = new UrlSource();
-                            header.setText(videos.get(position).name);
-                            urlSource.setUri(Urls.serverUrl + urlPath + videos.get(position).url);
-                            aliyunVodPlayer.setDataSource(urlSource);
-                            aliyunVodPlayer.prepare();
-                            aliyunVodPlayer.start();
+                            if (play_mode == 0) {
+                                // 列表循环
+                                position = position + 1;
+                                while (position < videos.size() && TextUtils.isEmpty(videos.get(position).url)) {
+                                    position = position + 1;
+                                }
+                                if (position < videos.size()) {
+                                    header.setText(videos.get(position).name);
+                                    videoView.release();
+                                    videoView.setUrl(Urls.serverUrl + urlPath + videos.get(position).url);
+                                    videoView.start();
+                                } else {
+                                    finish();
+                                }
+                            } else {
+                                // 单集循环
+                                header.setText(videos.get(position).name);
+                                videoView.release();
+                                videoView.setUrl(Urls.serverUrl + urlPath + videos.get(position).url);
+                                videoView.start();
+                            }
                         }
                     }
                 }
             }
         });
-
-        UrlSource urlSource = new UrlSource();
-        urlSource.setUri(Urls.serverUrl + urlPath + videos.get(position).url);
-        aliyunVodPlayer.setDataSource(urlSource);
-        aliyunVodPlayer.setAutoPlay(true);
-        aliyunVodPlayer.prepare();
-
-        SurfaceView surfaceView = findViewById(R.id.play_view);
-        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-                aliyunVodPlayer.setDisplay(surfaceHolder);
-            }
-
-            @Override
-            public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-                aliyunVodPlayer.redraw();
-            }
-
-            @Override
-            public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
-                aliyunVodPlayer.setDisplay(null);
-            }
-        });
+        videoView.start();
     }
 
     private void setValue(String key, int value) {
@@ -177,40 +139,43 @@ public class PlayActivity extends Activity {
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
                 || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
                 || keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
-            if (playerState == IPlayer.started) {
-                aliyunVodPlayer.pause();
-            } else if (playerState == IPlayer.paused) {
-                aliyunVodPlayer.start();
+            if (videoView.isPlaying()) {
+                videoView.pause();
+            } else if (videoView.getCurrentPlayState() == STATE_PAUSED) {
+                videoView.resume();
             }
         } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            aliyunVodPlayer.seekTo(currentPositon - 5000);
+            videoView.seekTo(videoView.getCurrentPosition() - 5000);
         } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            aliyunVodPlayer.seekTo(currentPositon + 5000);
+            videoView.seekTo(videoView.getCurrentPosition() + 5000);
         }
         return super.onKeyDown(keyCode, event);
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        if (playerState == IPlayer.paused) {
-            aliyunVodPlayer.start();
-        }
+    protected void onPause() {
+        super.onPause();
+        videoView.pause();
     }
 
     @Override
-    protected void onStop() {
-        super.onStop();
-        aliyunVodPlayer.pause();
+    protected void onResume() {
+        super.onResume();
+        videoView.resume();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-
         setValue(String.valueOf(System.currentTimeMillis() / 1000 / (60 * 60 * 24)), todayPlayCount);
 
-        aliyunVodPlayer.stop();
-        aliyunVodPlayer.release();
+        videoView.release();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!videoView.onBackPressed()) {
+            super.onBackPressed();
+        }
     }
 }

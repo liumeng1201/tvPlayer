@@ -49,6 +49,10 @@ dependencies {
     implementation 'com.aliyun.sdk.android:AliyunPlayer:4.5.0-full'
     implementation 'com.alivc.conan:AlivcConan:0.9.5'
 
+    implementation 'xyz.doikki.android.dkplayer:dkplayer-java:3.3.7'
+    implementation 'xyz.doikki.android.dkplayer:dkplayer-ui:3.3.7'
+    implementation 'xyz.doikki.android.dkplayer:player-ijk:3.3.7'
+
     implementation 'com.blankj:utilcodex:1.31.1'
     implementation 'com.google.android.material:material:1.4.+'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.3'
