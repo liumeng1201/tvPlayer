@@ -12,7 +12,7 @@ android {
         targetSdkVersion 30
         multiDexEnabled true
         versionCode 20
-        versionName "2.0"
+        versionName "2.1"
         ndk {
             abiFilters "armeabi-v7a"
         }

@@ -25,7 +25,6 @@ public class PlayActivity extends Activity {
 
     private int position;
     private ArrayList<FileModel> videos;
-    private int playerState;
 
     private TextView header;
 
@@ -33,7 +32,6 @@ public class PlayActivity extends Activity {
     private int play_mode;
     private int single_play_num;
     private int day_play_num;
-    private long currentPositon;
 
     private int todayPlayCount;
     private int singlePlayCount;
@@ -65,6 +63,7 @@ public class PlayActivity extends Activity {
         }
         if (todayPlayCount >= day_play_num) {
             Toast.makeText(this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
+            videoView.release();
             finish();
         }
 
@@ -75,13 +74,13 @@ public class PlayActivity extends Activity {
         position = getIntent().getIntExtra("position", 0);
 
         header = findViewById(R.id.title);
-        header.setText(videos.get(position).name);
+        setVideoTitle(videos.get(position).name);
 
         videoView = findViewById(R.id.player);
         StandardVideoController videoController = new StandardVideoController(this);
         videoController.addDefaultControlComponent(videos.get(position).name, false);
         videoView.setVideoController(videoController);
-        videoView.setUrl(Urls.serverUrl + urlPath + videos.get(position).url);
+        videoView.setUrl(Urls.encodeChineseUrl(Urls.serverUrl + urlPath + videos.get(position).url));
         videoView.addOnStateChangeListener(new BaseVideoView.SimpleOnStateChangeListener() {
             @Override
             public void onPlayStateChanged(int playState) {
@@ -93,10 +92,12 @@ public class PlayActivity extends Activity {
 
                     if (todayPlayCount >= day_play_num) {
                         Toast.makeText(PlayActivity.this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
+                        videoView.release();
                         finish();
                     } else {
                         if (singlePlayCount >= single_play_num) {
                             Toast.makeText(PlayActivity.this, "小朋友，休息一下吧", Toast.LENGTH_LONG).show();
+                            videoView.release();
                             finish();
                         } else {
                             if (play_mode == 0) {
@@ -106,19 +107,20 @@ public class PlayActivity extends Activity {
                                     position = position + 1;
                                 }
                                 if (position < videos.size()) {
-                                    header.setText(videos.get(position).name);
+                                    setVideoTitle(videos.get(position).name);
                                     videoView.release();
-                                    videoView.setUrl(Urls.serverUrl + urlPath + videos.get(position).url);
+                                    videoView.setUrl(Urls.encodeChineseUrl(Urls.serverUrl + urlPath + videos.get(position).url));
                                     videoView.start();
                                 } else {
+                                    videoView.release();
                                     finish();
                                 }
                             } else {
                                 // 单集循环
-                                header.setText(videos.get(position).name);
-                                videoView.release();
-                                videoView.setUrl(Urls.serverUrl + urlPath + videos.get(position).url);
-                                videoView.start();
+                                setVideoTitle(videos.get(position).name);
+                                // videoView.release();
+                                // videoView.setUrl(Urls.encodeChineseUrl(Urls.serverUrl + urlPath + videos.get(position).url));
+                                videoView.replay(true);
                             }
                         }
                     }
@@ -132,6 +134,17 @@ public class PlayActivity extends Activity {
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putInt(key, value);
         editor.apply();
+    }
+
+    private void setVideoTitle(String title) {
+        header.setVisibility(TextView.VISIBLE);
+        header.setText(title);
+        header.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                header.setVisibility(TextView.GONE);
+            }
+        }, 5000);
     }
 
     @Override

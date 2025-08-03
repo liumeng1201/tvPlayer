@@ -48,7 +48,6 @@ public class RootActivity extends Activity {
         @Override
         public void run() {
             String url = Urls.serverUrl + urlPath + "files.json";
-            Log.d(TAG, url);
             getData(url);
         }
     };
@@ -125,7 +124,7 @@ public class RootActivity extends Activity {
         BufferedReader reader = null;
         HttpURLConnection urlConnection = null;
         try {
-            java.net.URL url = new java.net.URL(urlString);
+            java.net.URL url = new java.net.URL(Urls.encodeChineseUrl(urlString));
             urlConnection = (HttpURLConnection) url.openConnection();
             reader = new BufferedReader(new InputStreamReader(urlConnection.getInputStream(), "utf-8"));
             StringBuilder sb = new StringBuilder();
