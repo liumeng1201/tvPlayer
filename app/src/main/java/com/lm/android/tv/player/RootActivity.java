@@ -29,6 +29,7 @@ public class RootActivity extends Activity {
     private static final String TAG = "lm-Player";
     private RecyclerView recyclerView;
     private BaseRecyclerAdapter adapter;
+    private int selectPosition = 0;
 
     private String urlPath = "/";
     private ArrayList<FileModel> files = new ArrayList<>();
@@ -41,6 +42,16 @@ public class RootActivity extends Activity {
             files = gson.fromJson(json, new TypeToken<ArrayList<FileModel>>() {
             }.getType());
             adapter.notifyDataSetChanged();
+            recyclerView.post(() -> {
+                RecyclerView.LayoutManager layoutManager = recyclerView.getLayoutManager();
+                if (layoutManager != null && layoutManager.getChildCount() > 0) {
+                    recyclerView.scrollToPosition(selectPosition);
+                    View firstItemView = layoutManager.getChildAt(selectPosition);
+                    if (firstItemView != null) {
+                        firstItemView.requestFocus();
+                    }
+                }
+            });
         }
     };
 
@@ -89,6 +100,7 @@ public class RootActivity extends Activity {
         adapter.setOnItemClickListener(new CustomOnItemClickListener() {
             @Override
             public void onItemClick(@NonNull int position) {
+                selectPosition = position;
                 if (files.get(position).type == 0) {
                     Intent intent = new Intent(RootActivity.this, FolderActivity.class);
                     intent.putExtra("folder", files.get(position).name);

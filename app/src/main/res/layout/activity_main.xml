@@ -9,35 +9,18 @@
     tools:deviceIds="tv"
     tools:ignore="MergeRootFrame">
 
-    <androidx.appcompat.widget.LinearLayoutCompat
-        android:layout_width="match_parent"
+    <Button
+        android:id="@+id/setting"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/play_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:focusedByDefault="true"
-            android:nextFocusRight="@id/setting"
-            android:nextFocusDown="@id/category"
-            android:text="播放" />
-
-        <Button
-            android:id="@+id/setting"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:nextFocusLeft="@id/play_button"
-            android:nextFocusDown="@id/category"
-            android:text="设置" />
-    </androidx.appcompat.widget.LinearLayoutCompat>
+        android:layout_margin="8dp"
+        android:nextFocusDown="@id/category"
+        android:text="设置" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/category"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:nextFocusUp="@id/play_button" />
+        android:layout_margin="8dp"
+        android:nextFocusUp="@id/setting" />
 </androidx.appcompat.widget.LinearLayoutCompat>

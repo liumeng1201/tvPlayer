@@ -14,5 +14,7 @@
         android:id="@+id/title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="16dp" />
+        android:layout_margin="8dp"
+        android:elevation="2dp"
+        android:textAppearance="@style/TextAppearance.Leanback.Title" />
 </RelativeLayout>

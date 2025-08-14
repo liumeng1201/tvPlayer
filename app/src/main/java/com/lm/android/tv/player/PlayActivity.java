@@ -89,6 +89,7 @@ public class PlayActivity extends Activity {
                     // 播放完成
                     singlePlayCount = singlePlayCount + 1;
                     todayPlayCount = todayPlayCount + 1;
+                    sharedPreferences.edit().putInt(String.valueOf(System.currentTimeMillis() / 1000 / (60 * 60 * 24)), todayPlayCount).apply();
 
                     if (todayPlayCount >= day_play_num) {
                         Toast.makeText(PlayActivity.this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
@@ -106,15 +107,13 @@ public class PlayActivity extends Activity {
                                 while (position < videos.size() && TextUtils.isEmpty(videos.get(position).url)) {
                                     position = position + 1;
                                 }
-                                if (position < videos.size()) {
-                                    setVideoTitle(videos.get(position).name);
-                                    videoView.release();
-                                    videoView.setUrl(Urls.encodeChineseUrl(Urls.serverUrl + urlPath + videos.get(position).url));
-                                    videoView.start();
-                                } else {
-                                    videoView.release();
-                                    finish();
+                                if (position >= videos.size()) {
+                                    position = 0;
                                 }
+                                setVideoTitle(videos.get(position).name);
+                                videoView.release();
+                                videoView.setUrl(Urls.encodeChineseUrl(Urls.serverUrl + urlPath + videos.get(position).url));
+                                videoView.start();
                             } else {
                                 // 单集循环
                                 setVideoTitle(videos.get(position).name);
