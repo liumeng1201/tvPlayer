@@ -7,6 +7,7 @@ import android.app.Activity;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -53,7 +54,8 @@ public class PlayActivity extends Activity {
             single_play_num = Integer.MAX_VALUE;
         }
 
-        singlePlayCount = 0;
+        // 单次已播放次数
+        singlePlayCount = sharedPreferences.getInt(SettingActivity.PROPERTY_SINGLE_PLAY_COUNT, 0);
         // 每日已播放次数
         todayPlayCount = sharedPreferences.getInt(String.valueOf(System.currentTimeMillis() / 1000 / (60 * 60 * 24)), 0);
         // 单日可播放次数
@@ -63,8 +65,22 @@ public class PlayActivity extends Activity {
         }
         if (todayPlayCount >= day_play_num) {
             Toast.makeText(this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();
-            videoView.release();
             finish();
+        }
+
+        Log.d("lm-lm-lm", "singlePlayCount=" + singlePlayCount + "\nsingle_play_num=" + single_play_num);
+        if (singlePlayCount >= single_play_num) {
+            // 已达到单次播放次数最大值
+            long lastFinishTime = sharedPreferences.getLong(SettingActivity.PROPERTY_SINGLE_PLAY_LAST_FINISH_TIME, System.currentTimeMillis());
+            Log.d("lm-lm-lm", "lastFinishTime=" + lastFinishTime);
+            if (System.currentTimeMillis() - lastFinishTime < 1000 * 60 * 30) {
+                // 已达单次播放最大值之后再次播放时间间隔小于30分钟，则不允许播放
+                Toast.makeText(PlayActivity.this, "小朋友，休息一下吧", Toast.LENGTH_LONG).show();
+                finish();
+            } else {
+                // 间隔时间大于30分钟则允许再次播放
+                singlePlayCount = 0;
+            }
         }
 
         String urlPath = getIntent().getStringExtra("parent");
@@ -90,6 +106,8 @@ public class PlayActivity extends Activity {
                     singlePlayCount = singlePlayCount + 1;
                     todayPlayCount = todayPlayCount + 1;
                     sharedPreferences.edit().putInt(String.valueOf(System.currentTimeMillis() / 1000 / (60 * 60 * 24)), todayPlayCount).apply();
+                    sharedPreferences.edit().putLong(SettingActivity.PROPERTY_SINGLE_PLAY_LAST_FINISH_TIME, System.currentTimeMillis()).apply();
+                    sharedPreferences.edit().putInt(SettingActivity.PROPERTY_SINGLE_PLAY_COUNT, singlePlayCount).apply();
 
                     if (todayPlayCount >= day_play_num) {
                         Toast.makeText(PlayActivity.this, "今天观看时间已到，明天再看吧", Toast.LENGTH_LONG).show();

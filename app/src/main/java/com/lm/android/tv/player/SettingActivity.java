@@ -38,6 +38,8 @@ public class SettingActivity extends Activity {
 
     private String[] settings = {"单次播放", "每日播放", "播放方式", "检查更新"};
     public static final String PROPERTY_SINGLE_PLAY = "single_play";
+    public static final String PROPERTY_SINGLE_PLAY_COUNT = "single_play_count";
+    public static final String PROPERTY_SINGLE_PLAY_LAST_FINISH_TIME = "single_play_last_finish_time";
     public static final String PROPERTY_DAY_PLAY = "day_play";
     public static final String PROPERTY_PLAY_MODE = "play_mode";
 
