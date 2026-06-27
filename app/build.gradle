@@ -1,0 +1,79 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.lm.android.tv.player'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.lm.android.tv.player"
+        minSdk 26
+        targetSdk 35
+        versionCode 301
+        versionName "3.0"
+        multiDexEnabled true
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("../myreleasekey.keystore")
+            storePassword "android"
+            keyAlias "android"
+            keyPassword "android"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildFeatures {
+        viewBinding true
+    }
+
+    lint {
+        lintConfig file("lint.xml")
+    }
+}
+
+dependencies {
+    // AndroidX
+    implementation 'androidx.leanback:leanback:1.0.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.fragment:fragment:1.6.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-livedata:2.7.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'com.google.android.material:material:1.10.0'
+
+    // Media3 ExoPlayer
+    implementation 'androidx.media3:media3-exoplayer:1.2.1'
+    implementation 'androidx.media3:media3-ui:1.2.1'
+
+    // 图片加载
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+
+    // JSON
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // 网络请求
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // 工具库
+    implementation 'com.blankj:utilcodex:1.31.1'
+
+    // Room 数据库
+    implementation 'androidx.room:room-runtime:2.6.1'
+    annotationProcessor 'androidx.room:room-compiler:2.6.1'
+    implementation 'androidx.room:room-common:2.6.1'
+}

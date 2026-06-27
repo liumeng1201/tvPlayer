@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- 局域网服务器需要 HTTP 明文 -->
+    <issue id="InsecureBaseConfiguration" severity="informational" />
+
+    <!-- 各 Fragment 使用不同背景，overdraw 为预期行为 -->
+    <issue id="Overdraw" severity="informational" />
+
+    <!-- 代码已用 SDK_INT 守卫，inline 常量在旧设备上无害 -->
+    <issue id="InlinedApi" severity="informational" />
+
+    <!-- 安全 -->
+    <issue id="AllowBackup" severity="informational" />
+</lint>

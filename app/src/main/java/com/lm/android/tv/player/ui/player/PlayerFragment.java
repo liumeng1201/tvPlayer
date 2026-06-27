@@ -1,0 +1,566 @@
+package com.lm.android.tv.player.ui.player;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
+import androidx.fragment.app.Fragment;
+import androidx.media3.common.Player;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.ui.PlayerView;
+
+import com.lm.android.tv.player.R;
+import com.lm.android.tv.player.data.db.AppDatabase;
+import com.lm.android.tv.player.data.db.VideoProgressEntity;
+import com.lm.android.tv.player.data.model.FileModel;
+import com.lm.android.tv.player.player.ExoPlayerManager;
+import com.lm.android.tv.player.util.ParentalControlManager;
+import com.lm.android.tv.player.util.SharedPrefsHelper;
+import com.lm.android.tv.player.util.Urls;
+
+import java.util.ArrayList;
+
+/**
+ * 视频播放页面 —— 全屏播放 + 遥控器控制
+ */
+public class PlayerFragment extends Fragment {
+
+    public static final String ARG_PATH = "path";
+    public static final String ARG_INDEX = "index";
+    public static final String ARG_VIDEO_LIST = "video_list";
+
+    private PlayerView playerView;
+    private TextView tvTitle;
+    private TextView tvSeekIndicator;
+    private TextView tvRestartHint;
+    private View bottomProgressContainer;
+    private ProgressBar progressBar;
+    private TextView tvProgressCurrent;
+    private TextView tvProgressTotal;
+
+    private String path;
+    private ArrayList<FileModel> videoList = new ArrayList<>();
+    private int currentIndex;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable hideTitleRunnable;
+    private Runnable hideSeekRunnable;
+    private Runnable progressUpdater;
+    private Runnable restartHintRunnable;
+    private Runnable saveProgressRunnable;
+    private Runnable accumulatedTimeUpdater;
+    private boolean titleShouldShow;
+    private boolean isProgressVisible;
+
+    // 续播相关
+    private String currentVideoUrl;          // 当前播放的视频 URL（用于 Room 操作）
+    private boolean hasPendingRestart;       // 是否处于可从头播放的 5 秒窗口
+    private static final long RESTART_WINDOW_MS = 5000;
+
+    // 时长限制相关
+    private boolean pendingCooldownExit;     // 当前视频播完是否要因时长限额而退出
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        Bundle args = getArguments();
+        if (args != null) {
+            path = args.getString(ARG_PATH, "/");
+            currentIndex = args.getInt(ARG_INDEX, 0);
+            videoList = (ArrayList<FileModel>) args.getSerializable(ARG_VIDEO_LIST);
+            if (videoList == null) {
+                videoList = new ArrayList<>();
+            }
+        }
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+                             @Nullable Bundle savedInstanceState) {
+        return inflater.inflate(R.layout.fragment_player, container, false);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        playerView = view.findViewById(R.id.player_view);
+        tvTitle = view.findViewById(R.id.tv_video_title);
+        tvSeekIndicator = view.findViewById(R.id.tv_seek_indicator);
+        tvRestartHint = view.findViewById(R.id.tv_restart_hint);
+        bottomProgressContainer = view.findViewById(R.id.bottom_progress_container);
+        progressBar = view.findViewById(R.id.progress_bar);
+        tvProgressCurrent = view.findViewById(R.id.tv_progress_current);
+        tvProgressTotal = view.findViewById(R.id.tv_progress_total);
+
+        setupExoPlayer();
+        playCurrent();
+    }
+
+    @OptIn(markerClass = UnstableApi.class)
+    private void setupExoPlayer() {
+        ExoPlayerManager.getInstance(requireContext());
+
+        ExoPlayerManager.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int playbackState) {
+                if (playbackState == Player.STATE_ENDED) {
+                    onPlaybackCompleted();
+                } else if (playbackState == Player.STATE_READY) {
+                    updateProgressInfo();
+                }
+            }
+
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                titleShouldShow = !isPlaying;
+                updateTitleVisibility();
+                if (isPlaying) {
+                    cancelTitleHide();
+                    showProgress(false);
+                    startPeriodicSave();
+                } else {
+                    scheduleTitleHide();
+                    showProgress(true);
+                    stopPeriodicSave();
+                    saveCurrentProgress();
+                }
+            }
+        });
+
+        playerView.setPlayer(ExoPlayerManager.getInstance(requireContext()));
+        playerView.setUseController(false);
+        playerView.setKeepContentOnPlayerReset(true);
+    }
+
+    private void playCurrent() {
+        if (currentIndex < 0 || currentIndex >= videoList.size()) return;
+
+        FileModel item = videoList.get(currentIndex);
+        String name = item.name;
+        String url = Urls.encodeChineseUrl(Urls.buildFileUrl(path, item.url));
+        currentVideoUrl = url;
+
+        tvTitle.setText(name);
+
+        // 检查是否处于冷却期
+        if (ParentalControlManager.isInCooldown(requireContext())) {
+            String remaining = ParentalControlManager.getCooldownRemainingText(requireContext());
+            Toast.makeText(getContext(), "休息时间还没结束，请" + remaining + "之后再回来~", Toast.LENGTH_LONG).show();
+            // 延后执行 onBackPressed，避免在 Fragment 创建中直接操作 FragmentManager
+            handler.post(() -> {
+                if (isAdded()) {
+                    requireActivity().onBackPressed();
+                }
+            });
+            return;
+        }
+
+        titleShouldShow = true;
+        updateTitleVisibility();
+        scheduleTitleHide();
+
+        ExoPlayerManager.play(requireContext(), url);
+        startPeriodicSave();
+        startAccumulatedTimeTracking();
+
+        // 检查续播
+        checkResumePlayback();
+    }
+
+    // ===================== 续播逻辑 =====================
+
+    /**
+     * 异步查询 Room，若有有效进度则 seekTo 并显示续播提示
+     * 使用已保存的 durationMs 判断，不依赖 ExoPlayer（可能尚未就绪）
+     */
+    private void checkResumePlayback() {
+        if (currentVideoUrl == null) return;
+
+        AppDatabase.getDbExecutor().execute(() -> {
+            VideoProgressEntity saved = AppDatabase.getInstance(requireContext())
+                    .videoProgressDao().getProgress(currentVideoUrl);
+
+            if (saved != null && saved.getPositionMs() > 0 && saved.getDurationMs() > 0
+                    && (saved.getDurationMs() - saved.getPositionMs()) > 10_000) {
+                long finalPos = saved.getPositionMs();
+                long savedDuration = saved.getDurationMs();
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        ExoPlayerManager.seekTo(finalPos);
+                        showRestartHint(finalPos, savedDuration);
+                    });
+                }
+            }
+        });
+    }
+
+    /**
+     * 显示续播提示 + 启动 5 秒从头播放窗口
+     */
+    private void showRestartHint(long savedPos, long duration) {
+        if (getContext() == null) return;
+
+        // 检查提示是否已满 10 次
+        int hintCount = SharedPrefsHelper.getInt(getContext(),
+                SharedPrefsHelper.KEY_RESTART_HINT_COUNT, 0);
+
+        String remaining = formatTime(duration - savedPos);
+        tvRestartHint.setText("剩余" + remaining + "，按左键从头播放");
+        tvRestartHint.setVisibility(View.VISIBLE);
+
+        if (hintCount < SharedPrefsHelper.KEY_RESTART_HINT_MAX) {
+            // 计数 + 保存
+            SharedPrefsHelper.putInt(getContext(),
+                    SharedPrefsHelper.KEY_RESTART_HINT_COUNT, hintCount + 1);
+        }
+
+        // 进入 5 秒可重播窗口
+        hasPendingRestart = true;
+
+        cancelRestartHint();
+        restartHintRunnable = () -> {
+            hasPendingRestart = false;
+            tvRestartHint.setVisibility(View.GONE);
+        };
+        handler.postDelayed(restartHintRunnable, RESTART_WINDOW_MS);
+    }
+
+    private void cancelRestartHint() {
+        if (restartHintRunnable != null) {
+            handler.removeCallbacks(restartHintRunnable);
+            restartHintRunnable = null;
+        }
+    }
+
+    /**
+     * 从头开始播放（按左键时触发）
+     */
+    private void restartFromBeginning() {
+        hasPendingRestart = false;
+        cancelRestartHint();
+        tvRestartHint.setVisibility(View.GONE);
+
+        ExoPlayerManager.seekTo(0);
+        Toast.makeText(getContext(), "已从头播放", Toast.LENGTH_SHORT).show();
+    }
+
+    // ===================== 进度保存 =====================
+
+    private void saveCurrentProgress() {
+        if (currentVideoUrl == null) return;
+
+        long pos = ExoPlayerManager.getCurrentPosition();
+        long duration = ExoPlayerManager.getDuration();
+
+        // 只有非空、合理的位置才保存
+        if (pos <= 0 || duration <= 0) return;
+        // 剩余不足 10 秒视为快播完了，不保存（下次从头播）
+        if (duration - pos <= 10_000) return;
+
+        long finalPos = pos;
+        long finalDuration = duration;
+        AppDatabase.getDbExecutor().execute(() -> {
+            AppDatabase.getInstance(requireContext()).videoProgressDao()
+                    .insertOrUpdate(new VideoProgressEntity(
+                            currentVideoUrl, finalPos, finalDuration, System.currentTimeMillis()));
+        });
+    }
+
+    private void startPeriodicSave() {
+        stopPeriodicSave();
+        saveProgressRunnable = () -> {
+            saveCurrentProgress();
+            handler.postDelayed(saveProgressRunnable, 5000);
+        };
+        handler.postDelayed(saveProgressRunnable, 5000);
+    }
+
+    private void stopPeriodicSave() {
+        if (saveProgressRunnable != null) {
+            handler.removeCallbacks(saveProgressRunnable);
+            saveProgressRunnable = null;
+        }
+    }
+
+    private void deleteProgress() {
+        if (currentVideoUrl == null) return;
+
+        AppDatabase.getDbExecutor().execute(() -> {
+            AppDatabase.getInstance(requireContext()).videoProgressDao()
+                    .delete(currentVideoUrl);
+        });
+    }
+
+    // ===================== 时长累计 =====================
+
+    /**
+     * 每 5 秒累计实际播放时长，达到 15 分钟上限后标记退出标志
+     */
+    private void startAccumulatedTimeTracking() {
+        stopAccumulatedTimeTracking();
+        accumulatedTimeUpdater = () -> {
+            if (ExoPlayerManager.isPlaying()) {
+                ParentalControlManager.addAccumulatedTime(
+                        requireContext(), SharedPrefsHelper.TRACKING_INTERVAL_MS);
+
+                if (!pendingCooldownExit
+                        && ParentalControlManager.isLimitReached(requireContext())) {
+                    // 达到上限 → 标记当前视频播完即退出
+                    pendingCooldownExit = true;
+                }
+            }
+            handler.postDelayed(accumulatedTimeUpdater,
+                    SharedPrefsHelper.TRACKING_INTERVAL_MS);
+        };
+        handler.postDelayed(accumulatedTimeUpdater,
+                SharedPrefsHelper.TRACKING_INTERVAL_MS);
+    }
+
+    private void stopAccumulatedTimeTracking() {
+        if (accumulatedTimeUpdater != null) {
+            handler.removeCallbacks(accumulatedTimeUpdater);
+            accumulatedTimeUpdater = null;
+        }
+    }
+
+    // ===================== 播放完成 =====================
+
+    private void onPlaybackCompleted() {
+        stopAccumulatedTimeTracking();
+        deleteProgress();
+
+        if (pendingCooldownExit) {
+            // 因时长限额而退出 → 启动冷却
+            pendingCooldownExit = false;
+            ParentalControlManager.startCooldown(requireContext());
+            Toast.makeText(getContext(), "小朋友，该休息了，2个小时后可再次观看~", Toast.LENGTH_LONG).show();
+            ExoPlayerManager.release();
+            requireActivity().onBackPressed();
+            return;
+        }
+
+        SharedPrefsHelper.putLastPosition(requireContext(), path, currentIndex);
+
+        int playMode = ParentalControlManager.getPlayMode(requireContext());
+
+        if (playMode == 0) {
+            int nextIndex = findNextVideoIndex();
+            if (nextIndex < 0) {
+                Toast.makeText(getContext(), "播放完毕", Toast.LENGTH_SHORT).show();
+                ExoPlayerManager.release();
+                requireActivity().onBackPressed();
+                return;
+            }
+            currentIndex = nextIndex;
+            playCurrent();
+        } else {
+            ExoPlayerManager.stop();
+            ExoPlayerManager.getInstance(requireContext()).seekTo(0);
+            ExoPlayerManager.getInstance(requireContext()).play();
+        }
+    }
+
+    private int findNextVideoIndex() {
+        for (int i = currentIndex + 1; i < videoList.size(); i++) {
+            if (videoList.get(i).isVideo() && videoList.get(i).url != null
+                    && !videoList.get(i).url.isEmpty()) {
+                return i;
+            }
+        }
+        for (int i = 0; i < currentIndex; i++) {
+            if (videoList.get(i).isVideo() && videoList.get(i).url != null
+                    && !videoList.get(i).url.isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    // ===================== 标题显示控制 =====================
+
+    private void scheduleTitleHide() {
+        cancelTitleHide();
+        hideTitleRunnable = () -> {
+            titleShouldShow = false;
+            updateTitleVisibility();
+        };
+        handler.postDelayed(hideTitleRunnable, 5000);
+    }
+
+    private void cancelTitleHide() {
+        if (hideTitleRunnable != null) {
+            handler.removeCallbacks(hideTitleRunnable);
+            hideTitleRunnable = null;
+        }
+    }
+
+    private void updateTitleVisibility() {
+        tvTitle.setVisibility(titleShouldShow && tvSeekIndicator.getVisibility() != View.VISIBLE
+                ? View.VISIBLE : View.GONE);
+    }
+
+    // ===================== 快进/快退指示器控制 =====================
+
+    private void showSeekIndicator(String text) {
+        tvSeekIndicator.setText(text);
+        tvSeekIndicator.setVisibility(View.VISIBLE);
+        updateTitleVisibility();
+
+        showProgress(true);
+        updateProgressInfo();
+
+        cancelSeekHide();
+        hideSeekRunnable = () -> {
+            tvSeekIndicator.setVisibility(View.GONE);
+            updateTitleVisibility();
+        };
+        handler.postDelayed(hideSeekRunnable, 800);
+    }
+
+    private void cancelSeekHide() {
+        if (hideSeekRunnable != null) {
+            handler.removeCallbacks(hideSeekRunnable);
+            hideSeekRunnable = null;
+        }
+    }
+
+    // ===================== 进度条控制 =====================
+
+    private void showProgress(boolean show) {
+        if (isProgressVisible == show) return;
+        isProgressVisible = show;
+
+        bottomProgressContainer.setVisibility(show ? View.VISIBLE : View.GONE);
+
+        if (show) {
+            updateProgressInfo();
+            startProgressUpdates();
+        } else {
+            stopProgressUpdates();
+        }
+    }
+
+    private void startProgressUpdates() {
+        stopProgressUpdates();
+        progressUpdater = () -> {
+            if (isProgressVisible) {
+                updateProgressInfo();
+                handler.postDelayed(progressUpdater, 500);
+            }
+        };
+        handler.postDelayed(progressUpdater, 500);
+    }
+
+    private void stopProgressUpdates() {
+        if (progressUpdater != null) {
+            handler.removeCallbacks(progressUpdater);
+            progressUpdater = null;
+        }
+    }
+
+    private void updateProgressInfo() {
+        long duration = ExoPlayerManager.getDuration();
+        long currentPos = ExoPlayerManager.getCurrentPosition();
+
+        if (duration <= 0) return;
+
+        int progress = (int) (currentPos * 1000 / duration);
+        progressBar.setProgress(progress);
+
+        tvProgressCurrent.setText(formatTime(currentPos));
+        tvProgressTotal.setText(formatTime(duration));
+    }
+
+    private static String formatTime(long ms) {
+        long totalSec = ms / 1000;
+        long h = totalSec / 3600;
+        long m = (totalSec % 3600) / 60;
+        long s = totalSec % 60;
+
+        if (h > 0) {
+            return String.format("%02d:%02d:%02d", h, m, s);
+        } else {
+            return String.format("%02d:%02d", m, s);
+        }
+    }
+
+    // ===================== 遥控器按键处理 =====================
+
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            if (ExoPlayerManager.isPlaying()) {
+                ExoPlayerManager.pause();
+            } else {
+                ExoPlayerManager.resume();
+            }
+            return true;
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            // 处于续播窗口内 → 从头播放
+            if (hasPendingRestart) {
+                restartFromBeginning();
+                return true;
+            }
+            // 否则正常快退
+            ExoPlayerManager.seekBack();
+            showSeekIndicator("快退");
+            return true;
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            ExoPlayerManager.seekForward();
+            showSeekIndicator("快进");
+            return true;
+        }
+        return false;
+    }
+
+    // ===================== 生命周期 =====================
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        saveCurrentProgress();
+        ExoPlayerManager.pause();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        ExoPlayerManager.resume();
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        cancelTitleHide();
+        cancelSeekHide();
+        cancelRestartHint();
+        stopProgressUpdates();
+        stopPeriodicSave();
+        stopAccumulatedTimeTracking();
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // 确保退出时保存进度
+        saveCurrentProgress();
+        Activity activity = getActivity();
+        if (activity != null && !activity.isChangingConfigurations()) {
+            ExoPlayerManager.release();
+        }
+    }
+}
