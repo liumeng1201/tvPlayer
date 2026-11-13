@@ -63,7 +63,7 @@ public class SubtitleTest {
                             .setUri(server.baseUrl() + "/动画/第一季/第01集.mp4")
                             .setSubtitleConfigurations(Collections.singletonList(subtitle))
                             .build();
-                    player.setPlayWhenReady(false);
+                    player.setPlayWhenReady(true);
                     player.setMediaItem(media);
                     player.prepare();
                     player.seekTo(2000);
