@@ -16,6 +16,7 @@ import com.lm.android.tv.player.data.model.FileModel;
 import com.lm.android.tv.player.player.ExoPlayerManager;
 import com.lm.android.tv.player.ui.widget.FileGridAdapter;
 import com.lm.android.tv.player.util.Urls;
+import com.lm.android.tv.player.util.SharedPrefsHelper;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -74,6 +75,13 @@ public class MediaLibraryTest {
                     return hasSubtitle.get();
                 });
                 assertTrue(server.requested("/动画/第一季/第01集.srt"));
+                activity.recreate();
+                waitFor("playback after activity recreation", () -> {
+                    AtomicBoolean playing = new AtomicBoolean();
+                    activity.onActivity(a -> playing.set(a.findViewById(R.id.player_view) != null
+                            && ExoPlayerManager.getInstance(a).isPlaying()));
+                    return playing.get();
+                });
                 activity.onActivity(a -> {
                     ExoPlayer player = ExoPlayerManager.getInstance(a);
                     assertEquals(1, player.getCurrentMediaItem().localConfiguration.subtitleConfigurations.size());
@@ -99,6 +107,50 @@ public class MediaLibraryTest {
                 waitFor("return to animation", () -> gridHas(activity, 1, "第一季"));
                 activity.onActivity(MainActivity::onBackPressed);
                 waitFor("return to root", () -> gridHas(activity, 3, "动画"));
+            }
+        } finally {
+            Urls.serverUrl = previousUrl;
+            context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        }
+    }
+
+    @Test
+    public void singleEpisodeLoopRestartsPlayback() throws Exception {
+        String previousUrl = Urls.serverUrl;
+        Context context = ApplicationProvider.getApplicationContext();
+        context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        SharedPrefsHelper.putInt(context, SharedPrefsHelper.KEY_PLAY_MODE, 1);
+        try (MockMediaServer server = new MockMediaServer()) {
+            Urls.serverUrl = server.baseUrl();
+            try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+                waitFor("root directory", () -> gridHas(activity, 3, "动画"));
+                clickFirstItem(activity);
+                waitFor("animation directory", () -> gridHas(activity, 1, "第一季"));
+                clickFirstItem(activity);
+                waitFor("season directory", () -> gridHas(activity, 2, "第01集"));
+                clickFirstItem(activity);
+                waitFor("video ready", () -> {
+                    AtomicBoolean ready = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        ExoPlayer player = ExoPlayerManager.getInstance(a);
+                        ready.set(player.isPlaying() && player.getDuration() > 1000);
+                    });
+                    return ready.get();
+                });
+                activity.onActivity(a -> {
+                    ExoPlayer player = ExoPlayerManager.getInstance(a);
+                    player.seekTo(player.getDuration() - 250);
+                });
+                waitFor("single episode loop", () -> {
+                    AtomicBoolean restarted = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        ExoPlayer player = ExoPlayerManager.getInstance(a);
+                        restarted.set(player.isPlaying() && player.getCurrentPosition() < 3000
+                                && player.getCurrentMediaItem().localConfiguration.uri.toString()
+                                .contains("%E7%AC%AC01%E9%9B%86.mp4"));
+                    });
+                    return restarted.get();
+                });
             }
         } finally {
             Urls.serverUrl = previousUrl;

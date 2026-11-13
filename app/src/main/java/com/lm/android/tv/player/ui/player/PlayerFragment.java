@@ -1,6 +1,7 @@
 package com.lm.android.tv.player.ui.player;
 
 import android.app.Activity;
+import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -62,6 +63,8 @@ public class PlayerFragment extends Fragment {
     private Runnable accumulatedTimeUpdater;
     private boolean titleShouldShow;
     private boolean isProgressVisible;
+    private Player.Listener playerListener;
+    private int playbackGeneration;
 
     // 续播相关
     private String currentVideoUrl;          // 当前播放的视频 URL（用于 Room 操作）
@@ -114,7 +117,7 @@ public class PlayerFragment extends Fragment {
     private void setupExoPlayer() {
         ExoPlayerManager.getInstance(requireContext());
 
-        ExoPlayerManager.addListener(new Player.Listener() {
+        playerListener = new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_ENDED) {
@@ -139,7 +142,8 @@ public class PlayerFragment extends Fragment {
                     saveCurrentProgress();
                 }
             }
-        });
+        };
+        ExoPlayerManager.addListener(playerListener);
 
         playerView.setPlayer(ExoPlayerManager.getInstance(requireContext()));
         playerView.setUseController(false);
@@ -155,6 +159,7 @@ public class PlayerFragment extends Fragment {
         String subtitleUrl = item.subtitle == null || item.subtitle.trim().isEmpty()
                 ? null : Urls.encodeChineseUrl(Urls.buildFileUrl(path, item.subtitle));
         currentVideoUrl = url;
+        playbackGeneration++;
 
         tvTitle.setText(name);
 
@@ -190,22 +195,27 @@ public class PlayerFragment extends Fragment {
      * 使用已保存的 durationMs 判断，不依赖 ExoPlayer（可能尚未就绪）
      */
     private void checkResumePlayback() {
-        if (currentVideoUrl == null) return;
+        Context context = getContext();
+        if (currentVideoUrl == null || context == null) return;
+        Context appContext = context.getApplicationContext();
+        String videoUrl = currentVideoUrl;
+        int generation = playbackGeneration;
 
         AppDatabase.getDbExecutor().execute(() -> {
-            VideoProgressEntity saved = AppDatabase.getInstance(requireContext())
-                    .videoProgressDao().getProgress(currentVideoUrl);
+            VideoProgressEntity saved = AppDatabase.getInstance(appContext)
+                    .videoProgressDao().getProgress(videoUrl);
 
             if (saved != null && saved.getPositionMs() > 0 && saved.getDurationMs() > 0
                     && (saved.getDurationMs() - saved.getPositionMs()) > 10_000) {
                 long finalPos = saved.getPositionMs();
                 long savedDuration = saved.getDurationMs();
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
+                handler.post(() -> {
+                    if (isAdded() && getView() != null && generation == playbackGeneration
+                            && videoUrl.equals(currentVideoUrl)) {
                         ExoPlayerManager.seekTo(finalPos);
                         showRestartHint(finalPos, savedDuration);
-                    });
-                }
+                    }
+                });
             }
         });
     }
@@ -263,7 +273,10 @@ public class PlayerFragment extends Fragment {
     // ===================== 进度保存 =====================
 
     private void saveCurrentProgress() {
-        if (currentVideoUrl == null) return;
+        Context context = getContext();
+        if (currentVideoUrl == null || context == null) return;
+        Context appContext = context.getApplicationContext();
+        String videoUrl = currentVideoUrl;
 
         long pos = ExoPlayerManager.getCurrentPosition();
         long duration = ExoPlayerManager.getDuration();
@@ -276,9 +289,9 @@ public class PlayerFragment extends Fragment {
         long finalPos = pos;
         long finalDuration = duration;
         AppDatabase.getDbExecutor().execute(() -> {
-            AppDatabase.getInstance(requireContext()).videoProgressDao()
+            AppDatabase.getInstance(appContext).videoProgressDao()
                     .insertOrUpdate(new VideoProgressEntity(
-                            currentVideoUrl, finalPos, finalDuration, System.currentTimeMillis()));
+                            videoUrl, finalPos, finalDuration, System.currentTimeMillis()));
         });
     }
 
@@ -299,11 +312,13 @@ public class PlayerFragment extends Fragment {
     }
 
     private void deleteProgress() {
-        if (currentVideoUrl == null) return;
+        Context context = getContext();
+        if (currentVideoUrl == null || context == null) return;
+        Context appContext = context.getApplicationContext();
+        String videoUrl = currentVideoUrl;
 
         AppDatabase.getDbExecutor().execute(() -> {
-            AppDatabase.getInstance(requireContext()).videoProgressDao()
-                    .delete(currentVideoUrl);
+            AppDatabase.getInstance(appContext).videoProgressDao().delete(videoUrl);
         });
     }
 
@@ -370,9 +385,9 @@ public class PlayerFragment extends Fragment {
             currentIndex = nextIndex;
             playCurrent();
         } else {
-            ExoPlayerManager.stop();
             ExoPlayerManager.getInstance(requireContext()).seekTo(0);
             ExoPlayerManager.getInstance(requireContext()).play();
+            startAccumulatedTimeTracking();
         }
     }
 
@@ -546,6 +561,12 @@ public class PlayerFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        playbackGeneration++;
+        if (playerListener != null) {
+            ExoPlayerManager.removeListener(playerListener);
+            playerListener = null;
+        }
+        if (playerView != null) playerView.setPlayer(null);
         super.onDestroyView();
         cancelTitleHide();
         cancelSeekHide();

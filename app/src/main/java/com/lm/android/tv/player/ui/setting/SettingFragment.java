@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -17,6 +18,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -32,6 +34,9 @@ public class SettingFragment extends Fragment {
 
     private SettingViewModel viewModel;
     private SettingsAdapter adapter;
+    private BroadcastReceiver downloadReceiver;
+    private Context receiverContext;
+    private long activeDownloadId = -1;
 
     @Nullable
     @Override
@@ -117,24 +122,54 @@ public class SettingFragment extends Fragment {
         request.setMimeType("application/vnd.android.package-archive");
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
 
-        DownloadManager dm = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
-        final long downloadId = dm.enqueue(request);
+        Context appContext = requireContext().getApplicationContext();
+        DownloadManager dm = (DownloadManager) appContext.getSystemService(Context.DOWNLOAD_SERVICE);
+        unregisterDownloadReceiver();
 
         // 监听下载完成
-        BroadcastReceiver receiver = new BroadcastReceiver() {
+        downloadReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
-                if (id == downloadId) {
-                    installApk(context, downloadId);
-                    context.unregisterReceiver(this);
+                if (id == activeDownloadId && id != -1) {
+                    boolean succeeded = false;
+                    try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(id))) {
+                        if (cursor != null && cursor.moveToFirst()) {
+                            succeeded = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                                    == DownloadManager.STATUS_SUCCESSFUL;
+                        }
+                    }
+                    unregisterDownloadReceiver();
+                    if (succeeded && isAdded()) installApk(context, id);
+                    else if (isAdded()) Toast.makeText(context, "更新下载失败", Toast.LENGTH_SHORT).show();
                 }
             }
         };
-        getContext().registerReceiver(receiver,
+        ContextCompat.registerReceiver(appContext, downloadReceiver,
                 new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                Context.RECEIVER_NOT_EXPORTED);
+                ContextCompat.RECEIVER_EXPORTED);
+        receiverContext = appContext;
+        try {
+            activeDownloadId = dm.enqueue(request);
+        } catch (RuntimeException e) {
+            unregisterDownloadReceiver();
+            Toast.makeText(appContext, "无法开始更新下载", Toast.LENGTH_SHORT).show();
+        }
+    }
 
+    private void unregisterDownloadReceiver() {
+        if (downloadReceiver != null && receiverContext != null) {
+            receiverContext.unregisterReceiver(downloadReceiver);
+        }
+        downloadReceiver = null;
+        receiverContext = null;
+        activeDownloadId = -1;
+    }
+
+    @Override
+    public void onDestroyView() {
+        unregisterDownloadReceiver();
+        super.onDestroyView();
     }
 
     private void installApk(Context context, long downloadId) {
