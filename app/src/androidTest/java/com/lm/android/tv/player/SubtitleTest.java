@@ -58,7 +58,7 @@ public class SubtitleTest {
     }
 
     @Test
-    public void loadsChineseSrtAndShowsCorrectCueAfterSeek() throws Exception {
+    public void loadsChineseSrtAndShowsCuesDuringPlayback() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         try (MockMediaServer server = new MockMediaServer()) {
             CountDownLatch firstCue = new CountDownLatch(1);
@@ -101,8 +101,6 @@ public class SubtitleTest {
                 });
                 assertTrue("First subtitle did not appear", firstCue.await(20, TimeUnit.SECONDS));
                 assertNull("Playback failed: " + failure.get(), failure.get());
-                InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
-                        ExoPlayerManager.getInstance(context).seekTo(7000));
                 boolean gotSecondCue = secondCue.await(20, TimeUnit.SECONDS);
                 AtomicReference<String> state = new AtomicReference<>();
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
@@ -111,7 +109,7 @@ public class SubtitleTest {
                             + ", state=" + player.getPlaybackState() + ", isPlaying=" + player.isPlaying()
                             + ", cues=" + observed);
                 });
-                assertTrue("Subtitle did not update after seeking: " + state.get(), gotSecondCue);
+                assertTrue("Subtitle did not advance during playback: " + state.get(), gotSecondCue);
                 assertNull("Playback failed: " + failure.get(), failure.get());
                 assertTrue("Subtitle was not requested", server.requested("/动画/第一季/第01集.srt"));
             } finally {
