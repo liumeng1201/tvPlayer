@@ -61,6 +61,7 @@ public class SubtitleTest {
     public void loadsChineseSrtAndShowsCuesDuringPlayback() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         try (MockMediaServer server = new MockMediaServer()) {
+            String baseUrl = server.baseUrl();
             CountDownLatch firstCue = new CountDownLatch(1);
             CountDownLatch secondCue = new CountDownLatch(1);
             AtomicReference<PlaybackException> failure = new AtomicReference<>();
@@ -85,13 +86,13 @@ public class SubtitleTest {
                         }
                     });
                     MediaItem.SubtitleConfiguration subtitle = new MediaItem.SubtitleConfiguration.Builder(
-                            Uri.parse(server.baseUrl() + "/动画/第一季/第01集.srt"))
+                            Uri.parse(baseUrl + "/动画/第一季/第01集.srt"))
                             .setMimeType(MimeTypes.APPLICATION_SUBRIP)
                             .setLanguage("zh")
                             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                             .build();
                     MediaItem media = new MediaItem.Builder()
-                            .setUri(server.baseUrl() + "/动画/第一季/第01集.mp4")
+                            .setUri(baseUrl + "/动画/第一季/第01集.mp4")
                             .setSubtitleConfigurations(Collections.singletonList(subtitle))
                             .build();
                     player.setPlayWhenReady(true);
