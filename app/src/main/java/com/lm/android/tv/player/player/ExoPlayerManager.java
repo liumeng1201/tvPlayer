@@ -91,10 +91,16 @@ public final class ExoPlayerManager {
     }
 
     public static void resume() {
-        if (instance != null) {
-            if (instance.getPlaybackState() == Player.STATE_IDLE) instance.prepare();
-            instance.play();
+        ExoPlayer player = instance;
+        if (player != null && player.getCurrentMediaItem() != null) {
+            if (player.getPlaybackState() == Player.STATE_IDLE) player.prepare();
+            // prepare 的监听器可能释放播放器。
+            if (instance == player) player.play();
         }
+    }
+
+    public static boolean hasMediaItem() {
+        return instance != null && instance.getCurrentMediaItem() != null;
     }
 
     public static void seekTo(long positionMs) {
