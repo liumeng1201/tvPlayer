@@ -3,7 +3,10 @@ package com.lm.android.tv.player;
 import static org.junit.Assert.*;
 
 import android.content.Context;
+import android.view.View;
+import androidx.media3.common.text.Cue;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
@@ -54,6 +57,42 @@ public class MediaLibraryTest {
                 assertTrue(server.requested("/动画/files.json"));
                 assertTrue(server.requested("/动画/第一季/files.json"));
                 assertTrue(server.requested("/动画/第一季/第01集.mp4"));
+                waitFor("first episode subtitle", () -> {
+                    AtomicBoolean hasSubtitle = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        ExoPlayer player = ExoPlayerManager.getInstance(a);
+                        PlayerView playerView = a.findViewById(R.id.player_view);
+                        if (playerView == null || playerView.getPlayer() != player
+                                || playerView.getSubtitleView() == null
+                                || playerView.getSubtitleView().getVisibility() != View.VISIBLE) return;
+                        for (Cue cue : player.getCurrentCues().cues) {
+                            if (cue.text != null && cue.text.toString().contains("欢迎来到模拟影院")) {
+                                hasSubtitle.set(true);
+                            }
+                        }
+                    });
+                    return hasSubtitle.get();
+                });
+                assertTrue(server.requested("/动画/第一季/第01集.srt"));
+                activity.onActivity(a -> {
+                    ExoPlayer player = ExoPlayerManager.getInstance(a);
+                    assertEquals(1, player.getCurrentMediaItem().localConfiguration.subtitleConfigurations.size());
+                    player.seekTo(player.getDuration() - 300);
+                });
+                waitFor("second episode without subtitles", () -> {
+                    AtomicBoolean correct = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        ExoPlayer player = ExoPlayerManager.getInstance(a);
+                        if (player.getCurrentMediaItem() == null
+                                || player.getCurrentMediaItem().localConfiguration == null) return;
+                        android.net.Uri uri = player.getCurrentMediaItem().localConfiguration.uri;
+                        correct.set(uri.toString().contains("%E7%AC%AC02%E9%9B%86.mp4")
+                                && player.isPlaying()
+                                && player.getCurrentMediaItem().localConfiguration.subtitleConfigurations.isEmpty()
+                                && player.getCurrentCues().cues.isEmpty());
+                    });
+                    return correct.get();
+                });
                 activity.onActivity(MainActivity::onBackPressed);
                 waitFor("return to season", () -> gridHas(activity, 2, "第01集"));
                 activity.onActivity(MainActivity::onBackPressed);

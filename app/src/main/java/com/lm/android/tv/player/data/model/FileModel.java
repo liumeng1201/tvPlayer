@@ -14,6 +14,8 @@ public class FileModel implements Serializable {
     public int type;
     /** 当 type=1 或 type=2 时为文件相对路径 */
     public String url;
+    /** 视频对应的外挂字幕文件名，可为空 */
+    public String subtitle;
 
     public boolean isDirectory() { return type == 0; }
     public boolean isVideo() { return type == 1; }

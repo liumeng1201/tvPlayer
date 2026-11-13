@@ -152,6 +152,8 @@ public class PlayerFragment extends Fragment {
         FileModel item = videoList.get(currentIndex);
         String name = item.name;
         String url = Urls.encodeChineseUrl(Urls.buildFileUrl(path, item.url));
+        String subtitleUrl = item.subtitle == null || item.subtitle.trim().isEmpty()
+                ? null : Urls.encodeChineseUrl(Urls.buildFileUrl(path, item.subtitle));
         currentVideoUrl = url;
 
         tvTitle.setText(name);
@@ -173,7 +175,7 @@ public class PlayerFragment extends Fragment {
         updateTitleVisibility();
         scheduleTitleHide();
 
-        ExoPlayerManager.play(requireContext(), url);
+        ExoPlayerManager.play(requireContext(), url, subtitleUrl);
         startPeriodicSave();
         startAccumulatedTimeTracking();
 

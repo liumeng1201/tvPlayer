@@ -24,13 +24,16 @@ public class MediaDataTest {
     @Test
     public void parsesDirectoryVideoAndImageEntries() {
         String json = "[{\"name\":\"动画\",\"type\":0},"
-                + "{\"name\":\"一集\",\"type\":1,\"url\":\"一集.mp4\"},"
+                + "{\"name\":\"一集\",\"type\":1,\"url\":\"一集.mp4\",\"subtitle\":\"一集.srt\"},"
                 + "{\"name\":\"封面\",\"type\":2,\"url\":\"封面.jpg\"}]";
         List<FileModel> files = new Gson().fromJson(json, new TypeToken<List<FileModel>>() {}.getType());
         assertEquals(3, files.size());
         assertTrue(files.get(0).isDirectory());
         assertTrue(files.get(1).isVideo());
         assertEquals("一集.mp4", files.get(1).url);
+        assertEquals("一集.srt", files.get(1).subtitle);
+        assertNull(files.get(0).subtitle);
+        assertNull(files.get(2).subtitle);
         assertTrue(files.get(2).isImage());
     }
 }
