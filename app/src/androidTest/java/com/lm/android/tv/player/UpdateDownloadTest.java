@@ -164,6 +164,7 @@ public class UpdateDownloadTest {
         DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
         try (MockMediaServer server = new MockMediaServer();
              ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            String downloadUrl = server.baseUrl() + "/missing.apk";
             Method download = SettingFragment.class.getDeclaredMethod("downloadApk", String.class);
             Method pending = SettingFragment.class.getDeclaredMethod("showPendingUpdateDialog");
             Field asked = SettingFragment.class.getDeclaredField("installPermissionRequested");
@@ -178,7 +179,7 @@ public class UpdateDownloadTest {
                 a.getSupportFragmentManager().beginTransaction()
                         .replace(R.id.fragment_container, fragment).commitNow();
                 try {
-                    download.invoke(fragment, server.baseUrl() + "/missing.apk");
+                    download.invoke(fragment, downloadUrl);
                     firstId.set(SharedPrefsHelper.getLong(context,
                             SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
                     assertTrue(firstId.get() > 0);
@@ -206,7 +207,7 @@ public class UpdateDownloadTest {
                 try {
                     assertEquals(-1, SharedPrefsHelper.getLong(context,
                             SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
-                    download.invoke(target.get(), server.baseUrl() + "/missing.apk");
+                    download.invoke(target.get(), downloadUrl);
                     secondId.set(SharedPrefsHelper.getLong(context,
                             SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
                     assertTrue(secondId.get() > 0);
