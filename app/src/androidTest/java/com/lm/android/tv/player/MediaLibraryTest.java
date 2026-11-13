@@ -18,6 +18,7 @@ import com.lm.android.tv.player.player.ExoPlayerManager;
 import com.lm.android.tv.player.ui.widget.FileGridAdapter;
 import com.lm.android.tv.player.util.Urls;
 import com.lm.android.tv.player.util.SharedPrefsHelper;
+import com.lm.android.tv.player.util.ParentalControlManager;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -199,6 +200,47 @@ public class MediaLibraryTest {
                 });
                 assertTrue(SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, -1)
                         < SharedPrefsHelper.SESSION_MAX_MS);
+            }
+        } finally {
+            Urls.serverUrl = previousUrl;
+            context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        }
+    }
+
+    @Test
+    public void reachingLimitFinishesCurrentVideoThenStartsCooldown() throws Exception {
+        String previousUrl = Urls.serverUrl;
+        Context context = ApplicationProvider.getApplicationContext();
+        context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        try (MockMediaServer server = new MockMediaServer()) {
+            Urls.serverUrl = server.baseUrl();
+            try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+                waitFor("root directory", () -> gridHas(activity, 3, "动画"));
+                clickFirstItem(activity);
+                waitFor("animation directory", () -> gridHas(activity, 1, "第一季"));
+                clickFirstItem(activity);
+                waitFor("season directory", () -> gridHas(activity, 2, "第01集"));
+                clickFirstItem(activity);
+                waitFor("video playing", () -> {
+                    AtomicBoolean ready = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        ExoPlayer player = ExoPlayerManager.getInstance(a);
+                        ready.set(player.isPlaying() && player.getDuration() > 1000);
+                    });
+                    return ready.get();
+                });
+                SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS,
+                        SharedPrefsHelper.SESSION_MAX_MS);
+                activity.onActivity(a -> {
+                    ExoPlayer player = ExoPlayerManager.getInstance(a);
+                    assertTrue("Current video should continue before it ends", player.isPlaying());
+                    player.seekTo(player.getDuration() - 250);
+                });
+                waitFor("return to list after current video", () -> gridHas(activity, 2, "第01集"));
+                assertTrue("Cooldown should start when the current video finishes",
+                        ParentalControlManager.isInCooldown(context));
+                clickFirstItem(activity);
+                activity.onActivity(a -> assertNull(a.findViewById(R.id.player_view)));
             }
         } finally {
             Urls.serverUrl = previousUrl;
