@@ -36,6 +36,7 @@ public class SubtitleTest {
             CountDownLatch firstCue = new CountDownLatch(1);
             CountDownLatch secondCue = new CountDownLatch(1);
             AtomicReference<PlaybackException> failure = new AtomicReference<>();
+            StringBuilder observed = new StringBuilder();
             try {
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
                     ExoPlayer player = ExoPlayerManager.getInstance(context);
@@ -43,6 +44,8 @@ public class SubtitleTest {
                         @Override public void onCues(CueGroup group) {
                             for (Cue cue : group.cues) {
                                 if (cue.text == null) continue;
+                                observed.append('[').append(player.getCurrentPosition()).append(':')
+                                        .append(cue.text).append(']');
                                 if (cue.text.toString().contains("欢迎来到模拟影院")) firstCue.countDown();
                                 if (cue.text.toString().contains("这是第二段测试字幕")) secondCue.countDown();
                             }
@@ -72,7 +75,15 @@ public class SubtitleTest {
                 assertNull("Playback failed: " + failure.get(), failure.get());
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
                         ExoPlayerManager.getInstance(context).seekTo(7000));
-                assertTrue("Subtitle did not update after seeking", secondCue.await(20, TimeUnit.SECONDS));
+                boolean gotSecondCue = secondCue.await(20, TimeUnit.SECONDS);
+                AtomicReference<String> state = new AtomicReference<>();
+                InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+                    ExoPlayer player = ExoPlayerManager.getInstance(context);
+                    state.set("position=" + player.getCurrentPosition() + ", duration=" + player.getDuration()
+                            + ", state=" + player.getPlaybackState() + ", isPlaying=" + player.isPlaying()
+                            + ", cues=" + observed);
+                });
+                assertTrue("Subtitle did not update after seeking: " + state.get(), gotSecondCue);
                 assertNull("Playback failed: " + failure.get(), failure.get());
                 assertTrue("Subtitle was not requested", server.requested("/动画/第一季/第01集.srt"));
             } finally {
