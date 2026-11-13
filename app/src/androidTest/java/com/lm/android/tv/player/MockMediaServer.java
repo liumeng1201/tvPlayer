@@ -64,7 +64,8 @@ final class MockMediaServer implements Closeable {
                 }
                 MockResponse response = new MockResponse().setHeader("Accept-Ranges", "bytes")
                         .setHeader("Content-Type", name.endsWith(".json") ? "application/json; charset=utf-8"
-                                : name.endsWith(".png") ? "image/png" : "video/mp4")
+                                : name.endsWith(".png") ? "image/png"
+                                : name.endsWith(".srt") ? "application/x-subrip" : "video/mp4")
                         .setBody(new Buffer().write(bytes, start, end - start + 1));
                 if (range != null) response.setResponseCode(206)
                         .setHeader("Content-Range", "bytes " + start + "-" + end + "/" + bytes.length);
