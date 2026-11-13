@@ -39,6 +39,7 @@ public class SettingFragment extends Fragment {
     private BroadcastReceiver downloadReceiver;
     private Context receiverContext;
     private long activeDownloadId = -1;
+    private boolean installPermissionRequested;
 
     @Nullable
     @Override
@@ -116,8 +117,9 @@ public class SettingFragment extends Fragment {
 
     private void downloadApk(String url) {
         if (getContext() == null) return;
-        if (activeDownloadId >= 0) {
-            Toast.makeText(getContext(), "更新正在下载", Toast.LENGTH_SHORT).show();
+        if (activeDownloadId >= 0 || SharedPrefsHelper.getLong(requireContext(),
+                SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1) >= 0) {
+            Toast.makeText(getContext(), "更新下载或安装尚未完成", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -219,6 +221,11 @@ public class SettingFragment extends Fragment {
                 .getUriForDownloadedFile(downloadId);
         if (uri != null) {
             if (!context.getPackageManager().canRequestPackageInstalls()) {
+                if (installPermissionRequested) {
+                    Toast.makeText(context, "请在系统设置中允许安装应用", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                installPermissionRequested = true;
                 try {
                     startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                             Uri.parse("package:" + context.getPackageName())));
@@ -237,6 +244,7 @@ public class SettingFragment extends Fragment {
                 Toast.makeText(context, "无法打开安装程序", Toast.LENGTH_LONG).show();
             }
         } else {
+            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
             Toast.makeText(context, "找不到下载的安装包", Toast.LENGTH_LONG).show();
         }
     }
