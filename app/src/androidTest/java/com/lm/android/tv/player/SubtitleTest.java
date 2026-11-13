@@ -5,14 +5,18 @@ import static org.junit.Assert.*;
 import android.content.Context;
 import android.net.Uri;
 
+import androidx.annotation.OptIn;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.extractor.text.SubtitleParser;
+import androidx.media3.extractor.text.subrip.SubripParser;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -23,12 +27,36 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
 @RunWith(AndroidJUnit4.class)
 public class SubtitleTest {
+    @Test
+    @OptIn(markerClass = UnstableApi.class)
+    public void subtitleFileContainsBothTimedCues() throws Exception {
+        try (MockMediaServer server = new MockMediaServer()) {
+            Request request = new Request.Builder()
+                    .url(server.baseUrl() + "/动画/第一季/第01集.srt").build();
+            try (Response response = new OkHttpClient().newCall(request).execute()) {
+                assertEquals(200, response.code());
+                List<String> cues = new ArrayList<>();
+                new SubripParser().parse(response.body().bytes(), SubtitleParser.OutputOptions.allCues(),
+                        group -> cues.add(group.cues.get(0).text.toString()));
+                assertEquals(2, cues.size());
+                assertEquals("欢迎来到模拟影院", cues.get(0));
+                assertEquals("这是第二段测试字幕", cues.get(1));
+            }
+        }
+    }
+
     @Test
     public void loadsChineseSrtAndShowsCorrectCueAfterSeek() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
