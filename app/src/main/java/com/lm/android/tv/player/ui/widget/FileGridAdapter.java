@@ -39,11 +39,19 @@ public class FileGridAdapter extends RecyclerView.Adapter<FileGridAdapter.ViewHo
         FileModel item = items.get(position);
 
         // 加载封面
-        Glide.with(holder.cover.getContext())
-                .load(Urls.buildFileUrl(currentPath, item.cover))
-                .placeholder(R.drawable.item_bg)
-                .centerCrop()
-                .into(holder.cover);
+        int fallback = item.isDirectory() ? R.drawable.ic_folder
+                : item.isVideo() ? R.drawable.ic_video : R.drawable.item_bg;
+        if (item.cover == null || item.cover.trim().isEmpty()) {
+            Glide.with(holder.cover.getContext()).clear(holder.cover);
+            holder.cover.setImageResource(fallback);
+        } else {
+            Glide.with(holder.cover.getContext())
+                    .load(Urls.encodeChineseUrl(Urls.buildFileUrl(currentPath, item.cover)))
+                    .placeholder(fallback)
+                    .error(fallback)
+                    .centerCrop()
+                    .into(holder.cover);
+        }
 
         // 设置名称
         holder.title.setText(item.name);

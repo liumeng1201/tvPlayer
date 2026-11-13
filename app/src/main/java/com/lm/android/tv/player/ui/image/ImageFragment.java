@@ -55,7 +55,7 @@ public class ImageFragment extends Fragment {
 
         tvTitle.setText(name);
 
-        String fullUrl = Urls.buildFileUrl(path, url);
+        String fullUrl = Urls.encodeChineseUrl(Urls.buildFileUrl(path, url));
         Glide.with(this)
                 .load(fullUrl)
                 .centerInside()

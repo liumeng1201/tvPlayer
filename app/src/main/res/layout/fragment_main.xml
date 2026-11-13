@@ -26,7 +26,7 @@
             android:layout_height="48dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:background="@drawable/item_grid_bg"
+            android:background="@drawable/bg_grid_item"
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:minWidth="80dp"

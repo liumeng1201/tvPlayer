@@ -20,7 +20,7 @@ public final class Urls {
         if (path == null || path.isEmpty() || "/".equals(path)) {
             return serverUrl + "/files.json";
         }
-        return serverUrl + path + "files.json";
+        return serverUrl + (path.endsWith("/") ? path : path + "/") + "files.json";
     }
 
     /**
@@ -38,6 +38,7 @@ public final class Urls {
     public static String encodeChineseUrl(String originalUrl) {
         try {
             return URLEncoder.encode(originalUrl, "UTF-8")
+                    .replace("+", "%20")
                     .replace("%3A", ":")
                     .replace("%2F", "/")
                     .replace("%3F", "?")

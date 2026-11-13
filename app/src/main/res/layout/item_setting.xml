@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="4dp"
-    android:background="@drawable/item_grid_bg"
+    android:background="@drawable/bg_grid_item"
     android:focusable="true"
     android:focusableInTouchMode="true"
     android:gravity="center_vertical"

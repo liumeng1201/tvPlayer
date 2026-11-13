@@ -48,8 +48,28 @@ public class HomeScreenTest {
                     Thread.sleep(100);
                 }
                 assertEquals("Directory response should populate the grid", 1, count.get());
-                activity.onActivity(a -> a.findViewById(R.id.btn_setting).performClick());
+                activity.onActivity(a -> {
+                    View settingsButton = a.findViewById(R.id.btn_setting);
+                    assertTrue(settingsButton.getBackground().isStateful());
+                    settingsButton.performClick();
+                });
                 activity.onActivity(a -> assertNotNull(a.findViewById(R.id.rv_settings)));
+                AtomicInteger focusableSettings = new AtomicInteger();
+                long settingsDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while (System.nanoTime() < settingsDeadline) {
+                    activity.onActivity(a -> {
+                        RecyclerView list = a.findViewById(R.id.rv_settings);
+                        if (list != null && list.getChildCount() > 0) {
+                            View item = list.getChildAt(0);
+                            if (item.isFocusable() && item.getBackground().isStateful()) {
+                                focusableSettings.set(1);
+                            }
+                        }
+                    });
+                    if (focusableSettings.get() == 1) break;
+                    Thread.sleep(100);
+                }
+                assertEquals("Settings should have a focus background", 1, focusableSettings.get());
                 activity.onActivity(MainActivity::onBackPressed);
                 activity.onActivity(a -> {
                     View grid = a.findViewById(R.id.rv_grid);

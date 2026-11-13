@@ -16,9 +16,12 @@ public class MediaDataTest {
     public void buildsAndEncodesMediaUrls() {
         assertEquals(Urls.serverUrl + "/files.json", Urls.buildFilesUrl(null));
         assertEquals(Urls.serverUrl + "/动画/files.json", Urls.buildFilesUrl("/动画/"));
+        assertEquals(Urls.serverUrl + "/动画/files.json", Urls.buildFilesUrl("/动画"));
         assertEquals(Urls.serverUrl + "/动画/一集.mp4", Urls.buildFileUrl("/动画", "一集.mp4"));
         assertEquals("http://example.com/%E5%8A%A8%E7%94%BB/%E4%B8%80.mp4",
                 Urls.encodeChineseUrl("http://example.com/动画/一.mp4"));
+        assertEquals("http://example.com/a%2Bb%20c.mp4",
+                Urls.encodeChineseUrl("http://example.com/a+b c.mp4"));
     }
 
     @Test
