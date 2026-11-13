@@ -59,4 +59,33 @@ public class StorageTest {
         assertFalse(ParentalControlManager.isInCooldown(context));
         assertEquals(0, SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, -1));
     }
+
+    @Test
+    public void shortPauseKeepsRemainingTimeAndLongPauseResetsIt() {
+        ParentalControlManager.addAccumulatedTime(context, 15 * 60 * 1000L);
+        ParentalControlManager.recordPlaybackPause(context);
+        assertTrue(ParentalControlManager.tryStartPlayback(context));
+        assertEquals(15 * 60 * 1000L, ParentalControlManager.getAccumulatedMs(context));
+        ParentalControlManager.recordPlaybackPause(context);
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT,
+                System.currentTimeMillis() - SharedPrefsHelper.COOLDOWN_MS);
+        assertTrue(ParentalControlManager.tryStartPlayback(context));
+        assertEquals(0, ParentalControlManager.getAccumulatedMs(context));
+    }
+
+    @Test
+    public void reachingLimitAllowsCurrentPlaybackButPauseStartsCooldown() {
+        assertEquals(20 * 60 * 1000L, SharedPrefsHelper.SESSION_MAX_MS);
+        ParentalControlManager.addAccumulatedTime(context, SharedPrefsHelper.SESSION_MAX_MS);
+        assertTrue(ParentalControlManager.isLimitReached(context));
+        assertFalse(ParentalControlManager.isInCooldown(context));
+        ParentalControlManager.recordPlaybackPause(context);
+        long until = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0);
+        assertFalse(ParentalControlManager.tryStartPlayback(context));
+        ParentalControlManager.recordPlaybackPause(context);
+        assertEquals(until, SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0));
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, System.currentTimeMillis() - 1);
+        assertTrue(ParentalControlManager.tryStartPlayback(context));
+        assertEquals(0, ParentalControlManager.getAccumulatedMs(context));
+    }
 }

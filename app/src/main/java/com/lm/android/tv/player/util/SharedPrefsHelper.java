@@ -17,9 +17,10 @@ public final class SharedPrefsHelper {
     // ========== 时长限制相关 ==========
     public static final String KEY_ACCUMULATED_MS = "accumulated_ms";
     public static final String KEY_COOLDOWN_UNTIL = "cooldown_until";
+    public static final String KEY_PLAYBACK_PAUSED_AT = "playback_paused_at";
 
-    /** 单次观看上限（15 分钟） */
-    public static final long SESSION_MAX_MS = 15 * 60 * 1000L;
+    /** 单次观看上限（20 分钟） */
+    public static final long SESSION_MAX_MS = 20 * 60 * 1000L;
     /** 冷却时长（2 小时） */
     public static final long COOLDOWN_MS = 2 * 60 * 60 * 1000L;
     /** 累计时长更新间隔（5 秒） */

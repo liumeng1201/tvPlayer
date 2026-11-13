@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -65,6 +66,8 @@ public class PlayerFragment extends Fragment {
     private boolean isProgressVisible;
     private Player.Listener playerListener;
     private int playbackGeneration;
+    private long playingSinceElapsed = -1;
+    private boolean resumeAfterLifecyclePause;
 
     // 续播相关
     private String currentVideoUrl;          // 当前播放的视频 URL（用于 Room 操作）
@@ -129,6 +132,14 @@ public class PlayerFragment extends Fragment {
 
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
+                if (isPlaying) {
+                    playingSinceElapsed = SystemClock.elapsedRealtime();
+                    startAccumulatedTimeTracking();
+                } else {
+                    flushAccumulatedTime();
+                    playingSinceElapsed = -1;
+                    stopAccumulatedTimeTracking();
+                }
                 titleShouldShow = !isPlaying;
                 updateTitleVisibility();
                 if (isPlaying) {
@@ -164,7 +175,7 @@ public class PlayerFragment extends Fragment {
         tvTitle.setText(name);
 
         // 检查是否处于冷却期
-        if (ParentalControlManager.isInCooldown(requireContext())) {
+        if (!ParentalControlManager.tryStartPlayback(requireContext())) {
             String remaining = ParentalControlManager.getCooldownRemainingText(requireContext());
             Toast.makeText(getContext(), "休息时间还没结束，请" + remaining + "之后再回来~", Toast.LENGTH_LONG).show();
             // 延后执行 onBackPressed，避免在 Fragment 创建中直接操作 FragmentManager
@@ -175,6 +186,7 @@ public class PlayerFragment extends Fragment {
             });
             return;
         }
+        pendingCooldownExit = ParentalControlManager.isLimitReached(requireContext());
 
         titleShouldShow = true;
         updateTitleVisibility();
@@ -182,7 +194,6 @@ public class PlayerFragment extends Fragment {
 
         ExoPlayerManager.play(requireContext(), url, subtitleUrl);
         startPeriodicSave();
-        startAccumulatedTimeTracking();
 
         // 检查续播
         checkResumePlayback();
@@ -325,26 +336,29 @@ public class PlayerFragment extends Fragment {
     // ===================== 时长累计 =====================
 
     /**
-     * 每 5 秒累计实际播放时长，达到 15 分钟上限后标记退出标志
+     * 定期记录实际播放时间，达到上限后等待当前视频结束。
      */
     private void startAccumulatedTimeTracking() {
         stopAccumulatedTimeTracking();
         accumulatedTimeUpdater = () -> {
-            if (ExoPlayerManager.isPlaying()) {
-                ParentalControlManager.addAccumulatedTime(
-                        requireContext(), SharedPrefsHelper.TRACKING_INTERVAL_MS);
-
-                if (!pendingCooldownExit
-                        && ParentalControlManager.isLimitReached(requireContext())) {
-                    // 达到上限 → 标记当前视频播完即退出
-                    pendingCooldownExit = true;
-                }
-            }
+            if (ExoPlayerManager.isPlaying()) flushAccumulatedTime();
             handler.postDelayed(accumulatedTimeUpdater,
                     SharedPrefsHelper.TRACKING_INTERVAL_MS);
         };
         handler.postDelayed(accumulatedTimeUpdater,
                 SharedPrefsHelper.TRACKING_INTERVAL_MS);
+    }
+
+    private void flushAccumulatedTime() {
+        if (playingSinceElapsed < 0) return;
+        long now = SystemClock.elapsedRealtime();
+        long elapsed = Math.max(0, now - playingSinceElapsed);
+        playingSinceElapsed = now;
+        Context context = getContext();
+        if (context != null && elapsed > 0) {
+            ParentalControlManager.addAccumulatedTime(context, elapsed);
+            if (ParentalControlManager.isLimitReached(context)) pendingCooldownExit = true;
+        }
     }
 
     private void stopAccumulatedTimeTracking() {
@@ -357,6 +371,8 @@ public class PlayerFragment extends Fragment {
     // ===================== 播放完成 =====================
 
     private void onPlaybackCompleted() {
+        flushAccumulatedTime();
+        playingSinceElapsed = -1;
         stopAccumulatedTimeTracking();
         deleteProgress();
 
@@ -387,7 +403,6 @@ public class PlayerFragment extends Fragment {
         } else {
             ExoPlayerManager.getInstance(requireContext()).seekTo(0);
             ExoPlayerManager.getInstance(requireContext()).play();
-            startAccumulatedTimeTracking();
         }
     }
 
@@ -520,10 +535,14 @@ public class PlayerFragment extends Fragment {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
                 || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
-            if (ExoPlayerManager.isPlaying()) {
+            if (ExoPlayerManager.wantsToPlay()) {
+                flushAccumulatedTime();
+                playingSinceElapsed = -1;
+                stopAccumulatedTimeTracking();
+                ParentalControlManager.recordPlaybackPause(requireContext());
                 ExoPlayerManager.pause();
             } else {
-                ExoPlayerManager.resume();
+                resumeIfAllowed();
             }
             return true;
         } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
@@ -550,12 +569,36 @@ public class PlayerFragment extends Fragment {
     public void onPause() {
         super.onPause();
         saveCurrentProgress();
+        flushAccumulatedTime();
+        playingSinceElapsed = -1;
+        stopAccumulatedTimeTracking();
+        resumeAfterLifecyclePause = ExoPlayerManager.wantsToPlay();
+        Activity activity = getActivity();
+        if (getContext() != null && (activity == null || !activity.isChangingConfigurations())) {
+            ParentalControlManager.recordPlaybackPause(requireContext());
+        }
         ExoPlayerManager.pause();
     }
 
     @Override
     public void onResume() {
         super.onResume();
+        if (resumeAfterLifecyclePause) {
+            resumeAfterLifecyclePause = false;
+            resumeIfAllowed();
+        }
+    }
+
+    private void resumeIfAllowed() {
+        Context context = getContext();
+        if (context == null) return;
+        if (!ParentalControlManager.tryStartPlayback(context)) {
+            Toast.makeText(context, "休息时间还没结束，请"
+                    + ParentalControlManager.getCooldownRemainingText(context) + "之后再回来~",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        pendingCooldownExit = ParentalControlManager.isLimitReached(context);
         ExoPlayerManager.resume();
     }
 

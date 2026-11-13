@@ -86,7 +86,7 @@ public final class ExoPlayerManager {
     }
 
     public static void resume() {
-        if (instance != null && instance.getPlaybackState() == Player.STATE_READY) {
+        if (instance != null) {
             instance.play();
         }
     }
@@ -99,16 +99,13 @@ public final class ExoPlayerManager {
 
     public static void seekBack() {
         if (instance != null) {
-            long pos = Math.max(0, instance.getCurrentPosition() - 5000);
-            instance.seekTo(pos);
+            instance.seekBack();
         }
     }
 
     public static void seekForward() {
         if (instance != null) {
-            long pos = Math.min(instance.getContentDuration(),
-                    instance.getCurrentPosition() + 5000);
-            instance.seekTo(pos);
+            instance.seekForward();
         }
     }
 
@@ -128,6 +125,10 @@ public final class ExoPlayerManager {
 
     public static boolean isPlaying() {
         return instance != null && instance.isPlaying();
+    }
+
+    public static boolean wantsToPlay() {
+        return instance != null && instance.getPlayWhenReady();
     }
 
     public static long getCurrentPosition() {

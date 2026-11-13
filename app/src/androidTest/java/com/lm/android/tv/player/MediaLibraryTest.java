@@ -4,6 +4,7 @@ import static org.junit.Assert.*;
 
 import android.content.Context;
 import android.view.View;
+import android.view.KeyEvent;
 import androidx.media3.common.text.Cue;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
@@ -151,6 +152,53 @@ public class MediaLibraryTest {
                     });
                     return restarted.get();
                 });
+            }
+        } finally {
+            Urls.serverUrl = previousUrl;
+            context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        }
+    }
+
+    @Test
+    public void pauseAfterLimitBlocksResumeUntilCooldownExpires() throws Exception {
+        String previousUrl = Urls.serverUrl;
+        Context context = ApplicationProvider.getApplicationContext();
+        context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        try (MockMediaServer server = new MockMediaServer()) {
+            Urls.serverUrl = server.baseUrl();
+            try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+                waitFor("root directory", () -> gridHas(activity, 3, "动画"));
+                clickFirstItem(activity);
+                waitFor("animation directory", () -> gridHas(activity, 1, "第一季"));
+                clickFirstItem(activity);
+                waitFor("season directory", () -> gridHas(activity, 2, "第01集"));
+                clickFirstItem(activity);
+                waitFor("video playing", () -> {
+                    AtomicBoolean playing = new AtomicBoolean();
+                    activity.onActivity(a -> playing.set(ExoPlayerManager.getInstance(a).isPlaying()));
+                    return playing.get();
+                });
+                SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS,
+                        SharedPrefsHelper.SESSION_MAX_MS);
+                activity.onActivity(a -> a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
+                        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)));
+                activity.onActivity(a -> {
+                    assertFalse(ExoPlayerManager.wantsToPlay());
+                    a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
+                            new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER));
+                    assertFalse(ExoPlayerManager.wantsToPlay());
+                });
+                SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL,
+                        System.currentTimeMillis() - 1);
+                activity.onActivity(a -> a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
+                        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)));
+                waitFor("playback after cooldown", () -> {
+                    AtomicBoolean playing = new AtomicBoolean();
+                    activity.onActivity(a -> playing.set(ExoPlayerManager.getInstance(a).isPlaying()));
+                    return playing.get();
+                });
+                assertTrue(SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, -1)
+                        < SharedPrefsHelper.SESSION_MAX_MS);
             }
         } finally {
             Urls.serverUrl = previousUrl;

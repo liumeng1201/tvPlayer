@@ -6,7 +6,7 @@ import android.content.Context;
  * 播放时长限制管理器（替代原有的集数控制）
  *
  * 逻辑：
- * 1. 单次观看最多累计 15 分钟（仅实际播放状态计时）
+ * 1. 单次观看最多累计 20 分钟（仅实际播放状态计时）
  * 2. 达到上限后等待当前视频播完，启动 2 小时冷却
  * 3. 冷却期内无法播放，提示剩余等待时间
  */
@@ -29,7 +29,7 @@ public final class ParentalControlManager {
 
     // ===================== 上限判断 =====================
 
-    /** 本次累计时长是否已达到 15 分钟上限 */
+    /** 本次累计时长是否已达到 20 分钟上限 */
     public static boolean isLimitReached(Context context) {
         return getAccumulatedMs(context) >= SharedPrefsHelper.SESSION_MAX_MS;
     }
@@ -40,6 +40,10 @@ public final class ParentalControlManager {
     public static boolean isInCooldown(Context context) {
         long cooldownUntil = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0);
         if (cooldownUntil == 0) {
+            long pausedAt = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
+            if (pausedAt > 0 && System.currentTimeMillis() - pausedAt >= SharedPrefsHelper.COOLDOWN_MS) {
+                clearCooldown(context);
+            }
             return false;
         }
         if (System.currentTimeMillis() >= cooldownUntil) {
@@ -52,15 +56,38 @@ public final class ParentalControlManager {
 
     /** 启动 2 小时冷却（同时重置累计时长） */
     public static void startCooldown(Context context) {
-        long cooldownUntil = System.currentTimeMillis() + SharedPrefsHelper.COOLDOWN_MS;
+        startCooldownAt(context, System.currentTimeMillis());
+    }
+
+    private static void startCooldownAt(Context context, long startTime) {
+        long cooldownUntil = startTime + SharedPrefsHelper.COOLDOWN_MS;
         SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, cooldownUntil);
         SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, 0);
+    }
+
+    /** 记录用户或生命周期导致的中断；缓冲不算暂停。重复调用不延长休息时间。 */
+    public static void recordPlaybackPause(Context context) {
+        if (SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0) != 0) return;
+        long pausedAt = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
+        if (pausedAt == 0) {
+            pausedAt = System.currentTimeMillis();
+            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, pausedAt);
+        }
+        if (isLimitReached(context)) startCooldownAt(context, pausedAt);
+    }
+
+    /** 检查休息时间并开始或恢复一个观看周期。 */
+    public static boolean tryStartPlayback(Context context) {
+        if (isInCooldown(context)) return false;
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
+        return true;
     }
 
     /** 清除冷却状态 */
     private static void clearCooldown(Context context) {
         SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0);
         SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, 0);
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
     }
 
     /** 获取冷却剩余时间的格式化文本 */
