@@ -114,15 +114,16 @@ public class SettingFragment extends Fragment {
         if (getContext() == null) return;
 
         Toast.makeText(getContext(), "开始下载...", Toast.LENGTH_SHORT).show();
+        Context appContext = requireContext().getApplicationContext();
 
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
         request.setTitle("应用更新下载");
         request.setDescription("正在下载新版本...");
-        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "app-update.apk");
+        request.setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS,
+                "app-update-" + System.currentTimeMillis() + ".apk");
         request.setMimeType("application/vnd.android.package-archive");
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
 
-        Context appContext = requireContext().getApplicationContext();
         DownloadManager dm = (DownloadManager) appContext.getSystemService(Context.DOWNLOAD_SERVICE);
         unregisterDownloadReceiver();
 

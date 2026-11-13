@@ -2,18 +2,14 @@ package com.lm.android.tv.player;
 
 import static org.junit.Assert.*;
 
-import android.Manifest;
 import android.app.DownloadManager;
 import android.content.Context;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.view.View;
 
 import androidx.fragment.app.Fragment;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
-import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.lm.android.tv.player.ui.setting.SettingFragment;
 import com.lm.android.tv.player.util.Urls;
@@ -33,11 +29,6 @@ public class UpdateDownloadTest {
     @Test
     public void failedDownloadBroadcastCleansUpReceiver() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
-        if (Build.VERSION.SDK_INT <= 28 && context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(
-                    "pm grant " + context.getPackageName() + " android.permission.WRITE_EXTERNAL_STORAGE").close();
-        }
         String oldUrl = Urls.serverUrl;
         AtomicLong downloadId = new AtomicLong(-1);
         try (MockMediaServer server = new MockMediaServer()) {
