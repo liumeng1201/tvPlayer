@@ -60,8 +60,8 @@ dependencies {
     implementation 'com.google.android.material:material:1.10.0'
 
     // Media3 ExoPlayer
-    implementation 'androidx.media3:media3-exoplayer:1.9.4'
-    implementation 'androidx.media3:media3-ui:1.9.4'
+    implementation 'androidx.media3:media3-exoplayer:1.8.1'
+    implementation 'androidx.media3:media3-ui:1.8.1'
 
     // 图片加载
     implementation 'com.github.bumptech.glide:glide:4.16.0'
