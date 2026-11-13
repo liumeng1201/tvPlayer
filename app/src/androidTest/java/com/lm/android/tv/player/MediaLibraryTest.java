@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import android.content.Context;
 import android.view.View;
 import android.view.KeyEvent;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.common.text.Cue;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
@@ -15,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import com.lm.android.tv.player.data.model.FileModel;
 import com.lm.android.tv.player.player.ExoPlayerManager;
+import com.lm.android.tv.player.ui.player.PlaybackQueueViewModel;
 import com.lm.android.tv.player.ui.widget.FileGridAdapter;
 import com.lm.android.tv.player.util.Urls;
 import com.lm.android.tv.player.util.SharedPrefsHelper;
@@ -24,6 +26,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.concurrent.TimeUnit;
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
@@ -105,6 +108,9 @@ public class MediaLibraryTest {
                 });
                 activity.onActivity(a -> a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
                         new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)));
+                // Simulate a lost in-memory queue; the recreated screen must reload it.
+                activity.onActivity(a -> new ViewModelProvider(a).get(PlaybackQueueViewModel.class)
+                        .setVideos(Collections.emptyList()));
                 activity.recreate();
                 waitFor("paused second episode after recreation", () -> {
                     AtomicBoolean restored = new AtomicBoolean();

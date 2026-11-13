@@ -76,6 +76,7 @@ public class PlayerFragment extends Fragment {
     private long playingSinceElapsed = -1;
     private boolean resumeAfterLifecyclePause;
     private boolean restorePaused;
+    private String restoredVideoFile;
 
     // 续播相关
     private String currentVideoUrl;          // 当前播放的视频 URL（用于 Room 操作）
@@ -101,6 +102,7 @@ public class PlayerFragment extends Fragment {
         if (savedInstanceState != null) {
             currentIndex = savedInstanceState.getInt("current_index", currentIndex);
             restorePaused = savedInstanceState.getBoolean("paused", false);
+            restoredVideoFile = savedInstanceState.getString("current_video_file");
         }
     }
 
@@ -108,6 +110,11 @@ public class PlayerFragment extends Fragment {
     public void onSaveInstanceState(@NonNull Bundle outState) {
         outState.putInt("current_index", currentIndex);
         outState.putBoolean("paused", !ExoPlayerManager.wantsToPlay() && !resumeAfterLifecyclePause);
+        if (currentIndex >= 0 && currentIndex < videoList.size()) {
+            outState.putString("current_video_file", videoList.get(currentIndex).url);
+        } else if (restoredVideoFile != null) {
+            outState.putString("current_video_file", restoredVideoFile);
+        }
         super.onSaveInstanceState(outState);
     }
 
@@ -160,6 +167,15 @@ public class PlayerFragment extends Fragment {
                     }
                     handler.post(() -> {
                         if (!isAdded() || getView() == null || generation != playbackGeneration) return;
+                        if (restoredVideoFile != null) {
+                            currentIndex = -1;
+                            for (int i = 0; i < videos.size(); i++) {
+                                if (restoredVideoFile.equals(videos.get(i).url)) {
+                                    currentIndex = i;
+                                    break;
+                                }
+                            }
+                        }
                         if (videos.isEmpty() || currentIndex < 0 || currentIndex >= videos.size()) {
                             Toast.makeText(getContext(), "无法恢复播放列表", Toast.LENGTH_LONG).show();
                             requireActivity().onBackPressed();
