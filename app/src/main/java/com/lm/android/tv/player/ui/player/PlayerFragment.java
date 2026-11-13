@@ -19,6 +19,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
 import androidx.fragment.app.Fragment;
 import androidx.media3.common.Player;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.ui.PlayerView;
 
@@ -68,6 +69,7 @@ public class PlayerFragment extends Fragment {
     private int playbackGeneration;
     private long playingSinceElapsed = -1;
     private boolean resumeAfterLifecyclePause;
+    private boolean restorePaused;
 
     // 续播相关
     private String currentVideoUrl;          // 当前播放的视频 URL（用于 Room 操作）
@@ -90,6 +92,17 @@ public class PlayerFragment extends Fragment {
                 videoList = new ArrayList<>();
             }
         }
+        if (savedInstanceState != null) {
+            currentIndex = savedInstanceState.getInt("current_index", currentIndex);
+            restorePaused = savedInstanceState.getBoolean("paused", false);
+        }
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putInt("current_index", currentIndex);
+        outState.putBoolean("paused", !ExoPlayerManager.wantsToPlay());
+        super.onSaveInstanceState(outState);
     }
 
     @Nullable
@@ -114,6 +127,10 @@ public class PlayerFragment extends Fragment {
 
         setupExoPlayer();
         playCurrent();
+        if (restorePaused) {
+            ExoPlayerManager.pause();
+            restorePaused = false;
+        }
     }
 
     @OptIn(markerClass = UnstableApi.class)
@@ -121,6 +138,13 @@ public class PlayerFragment extends Fragment {
         ExoPlayerManager.getInstance(requireContext());
 
         playerListener = new Player.Listener() {
+            @Override
+            public void onPlayerError(@NonNull PlaybackException error) {
+                ExoPlayerManager.pause();
+                if (getContext() != null) {
+                    Toast.makeText(getContext(), "播放失败，请按确认键重试", Toast.LENGTH_LONG).show();
+                }
+            }
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_ENDED) {
@@ -133,6 +157,7 @@ public class PlayerFragment extends Fragment {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 if (isPlaying) {
+                    ParentalControlManager.markPlaybackActive(requireContext());
                     playingSinceElapsed = SystemClock.elapsedRealtime();
                     startAccumulatedTimeTracking();
                 } else {
@@ -166,9 +191,9 @@ public class PlayerFragment extends Fragment {
 
         FileModel item = videoList.get(currentIndex);
         String name = item.name;
-        String url = Urls.encodeChineseUrl(Urls.buildFileUrl(path, item.url));
+        String url = Urls.buildEncodedFileUrl(path, item.url);
         String subtitleUrl = item.subtitle == null || item.subtitle.trim().isEmpty()
-                ? null : Urls.encodeChineseUrl(Urls.buildFileUrl(path, item.subtitle));
+                ? null : Urls.buildEncodedFileUrl(path, item.subtitle);
         currentVideoUrl = url;
         playbackGeneration++;
 
@@ -295,7 +320,10 @@ public class PlayerFragment extends Fragment {
         // 只有非空、合理的位置才保存
         if (pos <= 0 || duration <= 0) return;
         // 剩余不足 10 秒视为快播完了，不保存（下次从头播）
-        if (duration - pos <= 10_000) return;
+        if (duration - pos <= 10_000) {
+            deleteProgress();
+            return;
+        }
 
         long finalPos = pos;
         long finalDuration = duration;
@@ -372,6 +400,7 @@ public class PlayerFragment extends Fragment {
 
     private void onPlaybackCompleted() {
         flushAccumulatedTime();
+        ParentalControlManager.finishPlaybackTracking(requireContext());
         playingSinceElapsed = -1;
         stopAccumulatedTimeTracking();
         deleteProgress();

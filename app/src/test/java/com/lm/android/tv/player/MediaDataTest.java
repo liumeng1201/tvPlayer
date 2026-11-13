@@ -22,6 +22,8 @@ public class MediaDataTest {
                 Urls.encodeChineseUrl("http://example.com/动画/一.mp4"));
         assertEquals("http://example.com/a%2Bb%20c.mp4",
                 Urls.encodeChineseUrl("http://example.com/a+b c.mp4"));
+        assertEquals(Urls.serverUrl + "/%E5%8A%A8%E7%94%BB/a%3Fb%23c.mp4",
+                Urls.buildEncodedFileUrl("/动画/", "a?b#c.mp4"));
     }
 
     @Test

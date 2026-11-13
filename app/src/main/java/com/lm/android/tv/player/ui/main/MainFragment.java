@@ -119,6 +119,10 @@ public class MainFragment extends Fragment {
         viewModel.getFiles().observe(getViewLifecycleOwner(), files -> {
             adapter.setCurrentPath(viewModel.getCurrentPath());
             adapter.setItems(files);
+            if (files != null && files.isEmpty()) {
+                tvError.setText("目录为空");
+                tvError.setVisibility(View.VISIBLE);
+            }
             if (files != null && !files.isEmpty()) {
                 tvError.setVisibility(View.GONE);
                 // 目录/返回导航后，数据加载完成，执行待滚动

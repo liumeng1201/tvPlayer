@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.provider.Settings;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -65,6 +66,7 @@ public class SettingFragment extends Fragment {
         viewModel.getUpdateInfo().observe(getViewLifecycleOwner(), update -> {
             if (update != null) {
                 showUpdateDialog(update);
+                viewModel.getUpdateInfo().setValue(null);
             }
         });
 
@@ -118,18 +120,24 @@ public class SettingFragment extends Fragment {
         Toast.makeText(getContext(), "开始下载...", Toast.LENGTH_SHORT).show();
         Context appContext = requireContext().getApplicationContext();
 
-        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-        request.setTitle("应用更新下载");
-        request.setDescription("正在下载新版本...");
-        request.setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS,
-                "app-update-" + System.currentTimeMillis() + ".apk");
-        request.setMimeType("application/vnd.android.package-archive");
-        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-
-        DownloadManager dm = (DownloadManager) appContext.getSystemService(Context.DOWNLOAD_SERVICE);
-        unregisterDownloadReceiver();
-        registerDownloadReceiver(appContext, dm);
+        Uri downloadUri = url == null ? null : Uri.parse(url);
+        if (downloadUri == null || downloadUri.getHost() == null
+                || !("http".equalsIgnoreCase(downloadUri.getScheme())
+                || "https".equalsIgnoreCase(downloadUri.getScheme()))) {
+            Toast.makeText(appContext, "更新地址无效", Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
+            DownloadManager.Request request = new DownloadManager.Request(downloadUri);
+            request.setTitle("应用更新下载");
+            request.setDescription("正在下载新版本...");
+            request.setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS,
+                    "app-update-" + System.currentTimeMillis() + ".apk");
+            request.setMimeType("application/vnd.android.package-archive");
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            DownloadManager dm = (DownloadManager) appContext.getSystemService(Context.DOWNLOAD_SERVICE);
+            unregisterDownloadReceiver();
+            registerDownloadReceiver(appContext, dm);
             activeDownloadId = dm.enqueue(request);
             SharedPrefsHelper.putLong(appContext, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, activeDownloadId);
         } catch (RuntimeException e) {
@@ -173,10 +181,12 @@ public class SettingFragment extends Fragment {
             }
         }
         if (status != DownloadManager.STATUS_SUCCESSFUL && status != DownloadManager.STATUS_FAILED) return;
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
         unregisterDownloadReceiver();
         if (status == DownloadManager.STATUS_SUCCESSFUL && isAdded()) installApk(context, id);
-        else if (isAdded()) Toast.makeText(context, "更新下载失败", Toast.LENGTH_SHORT).show();
+        else {
+            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+            if (isAdded()) Toast.makeText(context, "更新下载失败", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void unregisterDownloadReceiver() {
@@ -189,6 +199,12 @@ public class SettingFragment extends Fragment {
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        if (downloadReceiver == null && getContext() != null) restorePendingDownload();
+    }
+
+    @Override
     public void onDestroyView() {
         unregisterDownloadReceiver();
         super.onDestroyView();
@@ -198,10 +214,26 @@ public class SettingFragment extends Fragment {
         Uri uri = ((DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE))
                 .getUriForDownloadedFile(downloadId);
         if (uri != null) {
+            if (!context.getPackageManager().canRequestPackageInstalls()) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + context.getPackageName())));
+                } catch (RuntimeException e) {
+                    Toast.makeText(context, "请在系统设置中允许安装应用", Toast.LENGTH_LONG).show();
+                }
+                return;
+            }
             Intent installIntent = new Intent(Intent.ACTION_VIEW);
             installIntent.setDataAndType(uri, "application/vnd.android.package-archive");
             installIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(installIntent);
+            try {
+                startActivity(installIntent);
+                SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+            } catch (RuntimeException e) {
+                Toast.makeText(context, "无法打开安装程序", Toast.LENGTH_LONG).show();
+            }
+        } else {
+            Toast.makeText(context, "找不到下载的安装包", Toast.LENGTH_LONG).show();
         }
     }
 

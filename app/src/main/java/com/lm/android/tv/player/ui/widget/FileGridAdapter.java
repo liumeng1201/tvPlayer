@@ -46,7 +46,7 @@ public class FileGridAdapter extends RecyclerView.Adapter<FileGridAdapter.ViewHo
             holder.cover.setImageResource(fallback);
         } else {
             Glide.with(holder.cover.getContext())
-                    .load(Urls.encodeChineseUrl(Urls.buildFileUrl(currentPath, item.cover)))
+                    .load(Urls.buildEncodedFileUrl(currentPath, item.cover))
                     .placeholder(fallback)
                     .error(fallback)
                     .centerCrop()

@@ -19,6 +19,7 @@ public final class SharedPrefsHelper {
     public static final String KEY_ACCUMULATED_MS = "accumulated_ms";
     public static final String KEY_COOLDOWN_UNTIL = "cooldown_until";
     public static final String KEY_PLAYBACK_PAUSED_AT = "playback_paused_at";
+    public static final String KEY_LAST_PLAYING_AT = "last_playing_at";
 
     /** 单次观看上限（20 分钟） */
     public static final long SESSION_MAX_MS = 20 * 60 * 1000L;

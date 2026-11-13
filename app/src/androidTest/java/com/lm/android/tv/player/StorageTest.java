@@ -88,4 +88,17 @@ public class StorageTest {
         assertTrue(ParentalControlManager.tryStartPlayback(context));
         assertEquals(0, ParentalControlManager.getAccumulatedMs(context));
     }
+
+    @Test
+    public void interruptedPlaybackRecoversRestAndLimit() {
+        ParentalControlManager.addAccumulatedTime(context, SharedPrefsHelper.SESSION_MAX_MS);
+        ParentalControlManager.recoverInterruptedPlayback(context);
+        assertTrue(ParentalControlManager.isInCooldown(context));
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0);
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, 60000);
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_LAST_PLAYING_AT,
+                System.currentTimeMillis() - SharedPrefsHelper.COOLDOWN_MS);
+        ParentalControlManager.recoverInterruptedPlayback(context);
+        assertEquals(0, ParentalControlManager.getAccumulatedMs(context));
+    }
 }

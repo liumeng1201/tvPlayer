@@ -25,6 +25,24 @@ public final class ParentalControlManager {
     public static void addAccumulatedTime(Context context, long ms) {
         long current = getAccumulatedMs(context);
         SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, current + ms);
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_LAST_PLAYING_AT, System.currentTimeMillis());
+    }
+
+    public static void markPlaybackActive(Context context) {
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_LAST_PLAYING_AT, System.currentTimeMillis());
+    }
+
+    public static void finishPlaybackTracking(Context context) {
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_LAST_PLAYING_AT, 0);
+    }
+
+    public static void recoverInterruptedPlayback(Context context) {
+        long lastPlaying = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_LAST_PLAYING_AT, 0);
+        if (lastPlaying <= 0) return;
+        finishPlaybackTracking(context);
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, lastPlaying);
+        if (isLimitReached(context)) startCooldownAt(context, lastPlaying);
+        isInCooldown(context);
     }
 
     // ===================== 上限判断 =====================
@@ -67,6 +85,7 @@ public final class ParentalControlManager {
 
     /** 记录用户或生命周期导致的中断；缓冲不算暂停。重复调用不延长休息时间。 */
     public static void recordPlaybackPause(Context context) {
+        finishPlaybackTracking(context);
         if (SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0) != 0) return;
         long pausedAt = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
         if (pausedAt == 0) {

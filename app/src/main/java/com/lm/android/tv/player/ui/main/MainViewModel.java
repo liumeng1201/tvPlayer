@@ -1,6 +1,8 @@
 package com.lm.android.tv.player.ui.main;
 
 import android.app.Application;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
@@ -30,6 +32,8 @@ public class MainViewModel extends AndroidViewModel {
     private int pendingScrollPosition = -1;
     private boolean isAppFirstLaunch = true;
     private boolean shouldSkipNextResume = false;
+    private int requestGeneration;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public MainViewModel(@NonNull Application application) {
         super(application);
@@ -98,7 +102,8 @@ public class MainViewModel extends AndroidViewModel {
             titleLiveData.setValue("儿童视频");
         } else {
             // 提取当前目录名
-            String dirName = trimmed.substring(lastSlash + 1).replace("/", "");
+            String parent = currentPath.substring(0, currentPath.length() - 1);
+            String dirName = parent.substring(parent.lastIndexOf('/') + 1);
             titleLiveData.setValue(dirName);
         }
         loadFiles(currentPath);
@@ -121,23 +126,40 @@ public class MainViewModel extends AndroidViewModel {
     }
 
     private void loadFiles(String path) {
+        final int generation = ++requestGeneration;
         loadingLiveData.setValue(true);
+        errorLiveData.setValue(null);
+        filesLiveData.setValue(null);
         fileRepository.loadFiles(path, new FileRepository.FileCallback() {
             @Override
             public void onSuccess(String json) {
-                Gson gson = new Gson();
-                List<FileModel> files = gson.fromJson(json, new TypeToken<List<FileModel>>() {}.getType());
-                if (files == null) {
-                    files = new ArrayList<>();
+                try {
+                    List<FileModel> files = new Gson().fromJson(json, new TypeToken<List<FileModel>>() {}.getType());
+                    if (files == null) throw new IllegalArgumentException("目录数据为空");
+                    for (FileModel file : files) {
+                        if (file == null || file.name == null || file.name.trim().isEmpty()
+                                || file.type < 0 || file.type > 2
+                                || (file.type != 0 && (file.url == null || file.url.trim().isEmpty()))) {
+                            throw new IllegalArgumentException("目录条目无效");
+                        }
+                    }
+                    mainHandler.post(() -> {
+                        if (generation != requestGeneration) return;
+                        filesLiveData.setValue(files);
+                        loadingLiveData.setValue(false);
+                    });
+                } catch (RuntimeException e) {
+                    onError(new IOException("目录数据格式错误", e));
                 }
-                filesLiveData.postValue(files);
-                loadingLiveData.postValue(false);
             }
 
             @Override
             public void onError(IOException e) {
-                errorLiveData.postValue("加载失败: " + e.getMessage());
-                loadingLiveData.postValue(false);
+                mainHandler.post(() -> {
+                    if (generation != requestGeneration) return;
+                    errorLiveData.setValue("加载失败: " + e.getMessage());
+                    loadingLiveData.setValue(false);
+                });
             }
         });
     }

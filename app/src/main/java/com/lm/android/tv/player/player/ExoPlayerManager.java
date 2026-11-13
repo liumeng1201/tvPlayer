@@ -87,6 +87,7 @@ public final class ExoPlayerManager {
 
     public static void resume() {
         if (instance != null) {
+            if (instance.getPlaybackState() == Player.STATE_IDLE) instance.prepare();
             instance.play();
         }
     }

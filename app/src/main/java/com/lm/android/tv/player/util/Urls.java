@@ -2,6 +2,7 @@ package com.lm.android.tv.player.util;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import okhttp3.HttpUrl;
 
 /**
  * URL 相关工具类
@@ -30,6 +31,22 @@ public final class Urls {
         if (path == null) { path = "/"; }
         if (!path.endsWith("/")) { path += "/"; }
         return serverUrl + path + fileName;
+    }
+
+    /** 目录和文件名按原始路径段编码，避免将文件名中的 ? 或 # 当作 URL 语法。 */
+    public static String buildEncodedFileUrl(String path, String fileName) {
+        HttpUrl base = HttpUrl.parse(serverUrl);
+        if (base == null) throw new IllegalArgumentException("服务器地址无效");
+        HttpUrl.Builder builder = base.newBuilder();
+        if (path != null) {
+            for (String segment : path.split("/")) {
+                if (!segment.isEmpty()) builder.addPathSegment(segment);
+            }
+        }
+        for (String segment : fileName.split("/")) {
+            if (!segment.isEmpty()) builder.addPathSegment(segment);
+        }
+        return builder.build().toString();
     }
 
     /**

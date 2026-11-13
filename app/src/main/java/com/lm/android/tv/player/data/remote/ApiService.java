@@ -24,9 +24,11 @@ public final class ApiService {
      * 获取目录下的文件列表（异步回调）
      */
     public static void fetchFiles(String path, final ApiCallback<String> callback) {
-        String url = Urls.buildFilesUrl(path);
-        String encodedUrl = Urls.encodeChineseUrl(url);
-        get(encodedUrl, callback);
+        try {
+            get(Urls.buildEncodedFileUrl(path, "files.json"), callback);
+        } catch (IllegalArgumentException e) {
+            if (callback != null) callback.onError(new IOException("服务器地址无效", e));
+        }
     }
 
     /**
@@ -55,13 +57,17 @@ public final class ApiService {
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                if (!response.isSuccessful()) {
-                    if (callback != null) {
-                        callback.onError(new IOException("HTTP " + response.code()));
+                String body;
+                try (Response result = response) {
+                    if (!result.isSuccessful()) {
+                        if (callback != null) callback.onError(new IOException("HTTP " + result.code()));
+                        return;
                     }
+                    body = result.body() != null ? result.body().string() : null;
+                } catch (IOException e) {
+                    if (callback != null) callback.onError(e);
                     return;
                 }
-                String body = response.body() != null ? response.body().string() : null;
                 if (callback != null) {
                     callback.onSuccess(body);
                 }

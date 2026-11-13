@@ -69,7 +69,7 @@ public class SettingViewModel extends AndroidViewModel {
 
             @Override
             public void onError(IOException e) {
-                toastLiveData.postValue("已是最新版本");
+                toastLiveData.postValue("检查更新失败，请检查网络");
             }
         });
     }
