@@ -11,6 +11,7 @@ public final class SharedPrefsHelper {
     private static final String PREFS_NAME = "player";
 
     public static final String KEY_PLAY_MODE = "play_mode";
+    public static final String KEY_UPDATE_DOWNLOAD_ID = "update_download_id";
     public static final String KEY_LAST_POSITION_PREFIX = "last_pos_";
     public static final String KEY_RESTART_HINT_COUNT = "restart_hint_count";
 

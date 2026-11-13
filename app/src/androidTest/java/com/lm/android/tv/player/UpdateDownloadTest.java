@@ -4,6 +4,7 @@ import static org.junit.Assert.*;
 
 import android.app.DownloadManager;
 import android.content.Context;
+import android.database.Cursor;
 import android.view.View;
 
 import androidx.fragment.app.Fragment;
@@ -13,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import com.lm.android.tv.player.ui.setting.SettingFragment;
 import com.lm.android.tv.player.util.Urls;
+import com.lm.android.tv.player.util.SharedPrefsHelper;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -84,6 +86,71 @@ public class UpdateDownloadTest {
             if (downloadId.get() > 0) {
                 ((DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE)).remove(downloadId.get());
             }
+            Urls.serverUrl = oldUrl;
+        }
+    }
+
+    @Test
+    public void returningToSettingsProcessesDownloadFinishedWhileAway() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        String oldUrl = Urls.serverUrl;
+        AtomicLong downloadId = new AtomicLong(-1);
+        DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        try (MockMediaServer server = new MockMediaServer()) {
+            String baseUrl = server.baseUrl();
+            Urls.serverUrl = baseUrl;
+            try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+                waitFor(() -> {
+                    AtomicBoolean ready = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        View button = a.findViewById(R.id.btn_setting);
+                        ready.set(button != null && button.getVisibility() == View.VISIBLE);
+                    });
+                    return ready.get();
+                });
+                activity.onActivity(a -> a.findViewById(R.id.btn_setting).performClick());
+                waitFor(() -> {
+                    AtomicBoolean ready = new AtomicBoolean();
+                    activity.onActivity(a -> ready.set(a.getSupportFragmentManager()
+                            .findFragmentById(R.id.fragment_container) instanceof SettingFragment));
+                    return ready.get();
+                });
+                Method download = SettingFragment.class.getDeclaredMethod("downloadApk", String.class);
+                Field idField = SettingFragment.class.getDeclaredField("activeDownloadId");
+                download.setAccessible(true);
+                idField.setAccessible(true);
+                activity.onActivity(a -> {
+                    try {
+                        Fragment fragment = a.getSupportFragmentManager().findFragmentById(R.id.fragment_container);
+                        download.invoke(fragment, baseUrl + "/missing.apk");
+                        downloadId.set(idField.getLong(fragment));
+                        assertTrue(downloadId.get() > 0);
+                        a.onBackPressed();
+                    } catch (ReflectiveOperationException e) {
+                        throw new AssertionError(e);
+                    }
+                });
+                waitFor(() -> {
+                    AtomicBoolean home = new AtomicBoolean();
+                    activity.onActivity(a -> home.set(a.findViewById(R.id.btn_setting) != null));
+                    return home.get();
+                });
+                waitFor(() -> {
+                    try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(downloadId.get()))) {
+                        return cursor != null && cursor.moveToFirst()
+                                && cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                                == DownloadManager.STATUS_FAILED;
+                    }
+                });
+                assertEquals(downloadId.get(), SharedPrefsHelper.getLong(context,
+                        SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
+                activity.onActivity(a -> a.findViewById(R.id.btn_setting).performClick());
+                waitFor(() -> SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1) == -1);
+            }
+        } finally {
+            if (downloadId.get() > 0) dm.remove(downloadId.get());
+            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
             Urls.serverUrl = oldUrl;
         }
     }

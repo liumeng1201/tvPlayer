@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
@@ -44,7 +45,9 @@ final class MockMediaServer implements Closeable {
                     while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
                     bytes = output.toByteArray();
                 } catch (IOException e) {
-                    return new MockResponse().setResponseCode(404);
+                    MockResponse response = new MockResponse().setResponseCode(404);
+                    if (name.equals("missing.apk")) response.setHeadersDelay(2, TimeUnit.SECONDS);
+                    return response;
                 }
                 int start = 0;
                 int end = bytes.length - 1;

@@ -26,6 +26,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.lm.android.tv.player.R;
 import com.lm.android.tv.player.data.model.UpdateModel;
+import com.lm.android.tv.player.util.SharedPrefsHelper;
 
 /**
  * 设置页面
@@ -72,6 +73,7 @@ public class SettingFragment extends Fragment {
                 Toast.makeText(getContext(), msg, Toast.LENGTH_SHORT).show();
             }
         });
+        restorePendingDownload();
     }
 
     private void onSettingClicked(int position) {
@@ -126,36 +128,55 @@ public class SettingFragment extends Fragment {
 
         DownloadManager dm = (DownloadManager) appContext.getSystemService(Context.DOWNLOAD_SERVICE);
         unregisterDownloadReceiver();
+        registerDownloadReceiver(appContext, dm);
+        try {
+            activeDownloadId = dm.enqueue(request);
+            SharedPrefsHelper.putLong(appContext, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, activeDownloadId);
+        } catch (RuntimeException e) {
+            unregisterDownloadReceiver();
+            SharedPrefsHelper.putLong(appContext, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+            Toast.makeText(appContext, "无法开始更新下载", Toast.LENGTH_SHORT).show();
+        }
+    }
 
-        // 监听下载完成
+    private void restorePendingDownload() {
+        Context appContext = requireContext().getApplicationContext();
+        long id = SharedPrefsHelper.getLong(appContext, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        if (id < 0) return;
+        DownloadManager dm = (DownloadManager) appContext.getSystemService(Context.DOWNLOAD_SERVICE);
+        activeDownloadId = id;
+        registerDownloadReceiver(appContext, dm);
+        handleDownloadCompletion(appContext, dm, id);
+    }
+
+    private void registerDownloadReceiver(Context context, DownloadManager dm) {
         downloadReceiver = new BroadcastReceiver() {
             @Override
-            public void onReceive(Context context, Intent intent) {
+            public void onReceive(Context receiverContext, Intent intent) {
                 long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
                 if (id == activeDownloadId && id != -1) {
-                    boolean succeeded = false;
-                    try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(id))) {
-                        if (cursor != null && cursor.moveToFirst()) {
-                            succeeded = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                                    == DownloadManager.STATUS_SUCCESSFUL;
-                        }
-                    }
-                    unregisterDownloadReceiver();
-                    if (succeeded && isAdded()) installApk(context, id);
-                    else if (isAdded()) Toast.makeText(context, "更新下载失败", Toast.LENGTH_SHORT).show();
+                    handleDownloadCompletion(receiverContext, dm, id);
                 }
             }
         };
-        ContextCompat.registerReceiver(appContext, downloadReceiver,
+        ContextCompat.registerReceiver(context, downloadReceiver,
                 new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
                 ContextCompat.RECEIVER_EXPORTED);
-        receiverContext = appContext;
-        try {
-            activeDownloadId = dm.enqueue(request);
-        } catch (RuntimeException e) {
-            unregisterDownloadReceiver();
-            Toast.makeText(appContext, "无法开始更新下载", Toast.LENGTH_SHORT).show();
+        receiverContext = context;
+    }
+
+    private void handleDownloadCompletion(Context context, DownloadManager dm, long id) {
+        int status = DownloadManager.STATUS_FAILED;
+        try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(id))) {
+            if (cursor != null && cursor.moveToFirst()) {
+                status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+            }
         }
+        if (status != DownloadManager.STATUS_SUCCESSFUL && status != DownloadManager.STATUS_FAILED) return;
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        unregisterDownloadReceiver();
+        if (status == DownloadManager.STATUS_SUCCESSFUL && isAdded()) installApk(context, id);
+        else if (isAdded()) Toast.makeText(context, "更新下载失败", Toast.LENGTH_SHORT).show();
     }
 
     private void unregisterDownloadReceiver() {
