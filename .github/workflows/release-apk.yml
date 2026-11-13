@@ -4,6 +4,15 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      android_api:
+        description: Android TV 模拟器版本
+        type: choice
+        default: '30'
+        options:
+          - '26'
+          - '30'
+          - '34'
 
 permissions:
   contents: read
@@ -43,7 +52,7 @@ jobs:
       - name: Run tests on Android TV emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: ${{ inputs.android_api || '30' }}
           target: android-tv
           arch: x86
           profile: tv_1080p
