@@ -103,6 +103,20 @@ public class MediaLibraryTest {
                     });
                     return correct.get();
                 });
+                activity.onActivity(a -> a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
+                        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)));
+                activity.recreate();
+                waitFor("paused second episode after recreation", () -> {
+                    AtomicBoolean restored = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        ExoPlayer player = ExoPlayerManager.getInstance(a);
+                        restored.set(a.findViewById(R.id.player_view) != null
+                                && player.getCurrentMediaItem() != null
+                                && player.getCurrentMediaItem().localConfiguration.uri.toString()
+                                .contains("%E7%AC%AC02%E9%9B%86.mp4") && !player.getPlayWhenReady());
+                    });
+                    return restored.get();
+                });
                 activity.onActivity(MainActivity::onBackPressed);
                 waitFor("return to season", () -> gridHas(activity, 2, "第01集"));
                 activity.onActivity(MainActivity::onBackPressed);

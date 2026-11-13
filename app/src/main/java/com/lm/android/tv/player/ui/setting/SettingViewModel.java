@@ -61,6 +61,10 @@ public class SettingViewModel extends AndroidViewModel {
             public void onSuccess(String json) {
                 try {
                     UpdateModel update = new com.google.gson.Gson().fromJson(json, UpdateModel.class);
+                    if (update == null || update.versionCode <= 0 || update.downloadUrl == null
+                            || update.downloadUrl.trim().isEmpty()) {
+                        throw new IllegalArgumentException("更新信息不完整");
+                    }
                     updateLiveData.postValue(update);
                 } catch (Exception e) {
                     toastLiveData.postValue("解析更新信息失败");

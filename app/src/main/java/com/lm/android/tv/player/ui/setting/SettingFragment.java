@@ -116,6 +116,10 @@ public class SettingFragment extends Fragment {
 
     private void downloadApk(String url) {
         if (getContext() == null) return;
+        if (activeDownloadId >= 0) {
+            Toast.makeText(getContext(), "更新正在下载", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
         Toast.makeText(getContext(), "开始下载...", Toast.LENGTH_SHORT).show();
         Context appContext = requireContext().getApplicationContext();

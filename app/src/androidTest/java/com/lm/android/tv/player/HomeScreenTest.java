@@ -23,6 +23,32 @@ import okhttp3.mockwebserver.RecordedRequest;
 @RunWith(AndroidJUnit4.class)
 public class HomeScreenTest {
     @Test
+    public void malformedDirectoryShowsErrorInsteadOfCrashing() throws Exception {
+        String previousUrl = Urls.serverUrl;
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse().setBody("<html>invalid</html>"));
+            server.enqueue(new MockResponse().setBody("<html>invalid</html>"));
+            server.start();
+            Urls.serverUrl = server.url("/").toString().replaceAll("/$", "");
+            try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+                AtomicInteger error = new AtomicInteger();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+                while (System.nanoTime() < deadline && error.get() == 0) {
+                    activity.onActivity(a -> {
+                        android.widget.TextView view = a.findViewById(R.id.tv_error);
+                        if (view != null && view.getVisibility() == View.VISIBLE
+                                && view.getText().toString().contains("目录数据格式错误")) error.set(1);
+                    });
+                    Thread.sleep(100);
+                }
+                assertEquals("Malformed response should show a directory error", 1, error.get());
+            }
+        } finally {
+            Urls.serverUrl = previousUrl;
+        }
+    }
+
+    @Test
     public void loadsFilesAndNavigatesToSettingsAndBack() throws Exception {
         String previousUrl = Urls.serverUrl;
         try (MockWebServer server = new MockWebServer()) {

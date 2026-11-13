@@ -18,6 +18,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.common.Player;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
@@ -27,12 +28,17 @@ import com.lm.android.tv.player.R;
 import com.lm.android.tv.player.data.db.AppDatabase;
 import com.lm.android.tv.player.data.db.VideoProgressEntity;
 import com.lm.android.tv.player.data.model.FileModel;
+import com.lm.android.tv.player.data.repository.FileRepository;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.lm.android.tv.player.player.ExoPlayerManager;
 import com.lm.android.tv.player.util.ParentalControlManager;
 import com.lm.android.tv.player.util.SharedPrefsHelper;
 import com.lm.android.tv.player.util.Urls;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.io.IOException;
 
 /**
  * 视频播放页面 —— 全屏播放 + 遥控器控制
@@ -87,7 +93,7 @@ public class PlayerFragment extends Fragment {
         if (args != null) {
             path = args.getString(ARG_PATH, "/");
             currentIndex = args.getInt(ARG_INDEX, 0);
-            videoList = (ArrayList<FileModel>) args.getSerializable(ARG_VIDEO_LIST);
+            videoList = new ViewModelProvider(requireActivity()).get(PlaybackQueueViewModel.class).getVideos();
             if (videoList == null) {
                 videoList = new ArrayList<>();
             }
@@ -101,7 +107,7 @@ public class PlayerFragment extends Fragment {
     @Override
     public void onSaveInstanceState(@NonNull Bundle outState) {
         outState.putInt("current_index", currentIndex);
-        outState.putBoolean("paused", !ExoPlayerManager.wantsToPlay());
+        outState.putBoolean("paused", !ExoPlayerManager.wantsToPlay() && !resumeAfterLifecyclePause);
         super.onSaveInstanceState(outState);
     }
 
@@ -126,11 +132,55 @@ public class PlayerFragment extends Fragment {
         tvProgressTotal = view.findViewById(R.id.tv_progress_total);
 
         setupExoPlayer();
+        if (videoList.isEmpty()) {
+            restoreQueue();
+        } else {
+            startCurrentVideo();
+        }
+    }
+
+    private void startCurrentVideo() {
         playCurrent();
         if (restorePaused) {
             ExoPlayerManager.pause();
             restorePaused = false;
         }
+    }
+
+    private void restoreQueue() {
+        String requestedPath = path;
+        int generation = playbackGeneration;
+        new FileRepository().loadFiles(requestedPath, new FileRepository.FileCallback() {
+            @Override public void onSuccess(String json) {
+                try {
+                    List<FileModel> files = new Gson().fromJson(json, new TypeToken<List<FileModel>>() {}.getType());
+                    ArrayList<FileModel> videos = new ArrayList<>();
+                    if (files != null) for (FileModel file : files) {
+                        if (file != null && file.isVideo() && file.url != null && !file.url.isEmpty()) videos.add(file);
+                    }
+                    handler.post(() -> {
+                        if (!isAdded() || getView() == null || generation != playbackGeneration) return;
+                        if (videos.isEmpty() || currentIndex < 0 || currentIndex >= videos.size()) {
+                            Toast.makeText(getContext(), "无法恢复播放列表", Toast.LENGTH_LONG).show();
+                            requireActivity().onBackPressed();
+                            return;
+                        }
+                        videoList = videos;
+                        new ViewModelProvider(requireActivity()).get(PlaybackQueueViewModel.class).setVideos(videos);
+                        startCurrentVideo();
+                    });
+                } catch (RuntimeException e) {
+                    onError(new IOException("播放列表格式错误", e));
+                }
+            }
+            @Override public void onError(IOException error) {
+                handler.post(() -> {
+                    if (!isAdded() || getView() == null || generation != playbackGeneration) return;
+                    Toast.makeText(getContext(), "无法恢复播放列表，请检查网络", Toast.LENGTH_LONG).show();
+                    requireActivity().onBackPressed();
+                });
+            }
+        });
     }
 
     @OptIn(markerClass = UnstableApi.class)

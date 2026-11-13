@@ -20,6 +20,7 @@ import com.lm.android.tv.player.R;
 import com.lm.android.tv.player.data.model.FileModel;
 import com.lm.android.tv.player.ui.image.ImageFragment;
 import com.lm.android.tv.player.ui.player.PlayerFragment;
+import com.lm.android.tv.player.ui.player.PlaybackQueueViewModel;
 import com.lm.android.tv.player.ui.setting.SettingFragment;
 import com.lm.android.tv.player.ui.widget.FileGridAdapter;
 import com.lm.android.tv.player.ui.widget.GridItemDecoration;
@@ -129,6 +130,10 @@ public class MainFragment extends Fragment {
                 if (viewModel.hasPendingScroll()) {
                     int pos = viewModel.getPendingScrollPosition();
                     recyclerView.scrollToPosition(pos);
+                    recyclerView.post(() -> {
+                        RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(pos);
+                        if (holder != null) holder.itemView.requestFocus();
+                    });
                     viewModel.clearPendingScroll();
                 }
             }
@@ -207,7 +212,7 @@ public class MainFragment extends Fragment {
         Bundle args = new Bundle();
         args.putString(PlayerFragment.ARG_PATH, viewModel.getCurrentPath());
         args.putInt(PlayerFragment.ARG_INDEX, targetIndex);
-        args.putSerializable(PlayerFragment.ARG_VIDEO_LIST, new ArrayList<>(videoList));
+        new ViewModelProvider(requireActivity()).get(PlaybackQueueViewModel.class).setVideos(videoList);
 
         PlayerFragment fragment = new PlayerFragment();
         fragment.setArguments(args);
