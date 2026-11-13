@@ -159,11 +159,13 @@ public class PlayerFragment extends Fragment {
     }
 
     private void showQueueRestoreError() {
-        if (isResumed() && queueRestoreError != null) {
-            Toast.makeText(getContext(), queueRestoreError, Toast.LENGTH_LONG).show();
-            queueRestoreError = null;
-            requireActivity().onBackPressed();
-        }
+        handler.post(() -> {
+            if (isResumed() && queueRestoreError != null) {
+                Toast.makeText(getContext(), queueRestoreError, Toast.LENGTH_LONG).show();
+                queueRestoreError = null;
+                requireActivity().onBackPressed();
+            }
+        });
     }
 
     private void restoreQueue() {

@@ -170,8 +170,11 @@ public class UpdateDownloadTest {
             download.setAccessible(true);
             pending.setAccessible(true);
             asked.setAccessible(true);
+            java.util.concurrent.atomic.AtomicReference<SettingFragment> target =
+                    new java.util.concurrent.atomic.AtomicReference<>();
             activity.onActivity(a -> {
                 SettingFragment fragment = new SettingFragment();
+                target.set(fragment);
                 a.getSupportFragmentManager().beginTransaction()
                         .replace(R.id.fragment_container, fragment).commitNow();
                 try {
@@ -182,15 +185,28 @@ public class UpdateDownloadTest {
                     asked.setBoolean(fragment, true);
                     android.app.AlertDialog dialog = (android.app.AlertDialog) pending.invoke(fragment);
                     dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                }
+            });
+            // Dialog listeners run through the main message queue after the click.
+            activity.onActivity(a -> {
+                try {
                     assertFalse("An explicit retry must permit another authorization request",
-                            asked.getBoolean(fragment));
+                            asked.getBoolean(target.get()));
                     assertEquals(firstId.get(), SharedPrefsHelper.getLong(context,
                             SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
-                    dialog = (android.app.AlertDialog) pending.invoke(fragment);
+                    android.app.AlertDialog dialog = (android.app.AlertDialog) pending.invoke(target.get());
                     dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                }
+            });
+            activity.onActivity(a -> {
+                try {
                     assertEquals(-1, SharedPrefsHelper.getLong(context,
                             SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
-                    download.invoke(fragment, server.baseUrl() + "/missing.apk");
+                    download.invoke(target.get(), server.baseUrl() + "/missing.apk");
                     secondId.set(SharedPrefsHelper.getLong(context,
                             SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
                     assertTrue(secondId.get() > 0);
