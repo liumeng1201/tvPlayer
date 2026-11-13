@@ -85,7 +85,12 @@ public class SettingFragment extends Fragment {
                 showPlayModeDialog();
                 break;
             case 1:
-                viewModel.checkUpdate();
+                if (SharedPrefsHelper.getLong(requireContext(),
+                        SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1) >= 0) {
+                    showPendingUpdateDialog();
+                } else {
+                    viewModel.checkUpdate();
+                }
                 break;
         }
     }
@@ -119,7 +124,7 @@ public class SettingFragment extends Fragment {
         if (getContext() == null) return;
         if (activeDownloadId >= 0 || SharedPrefsHelper.getLong(requireContext(),
                 SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1) >= 0) {
-            Toast.makeText(getContext(), "更新下载或安装尚未完成", Toast.LENGTH_SHORT).show();
+            showPendingUpdateDialog();
             return;
         }
 
@@ -151,6 +156,31 @@ public class SettingFragment extends Fragment {
             SharedPrefsHelper.putLong(appContext, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
             Toast.makeText(appContext, "无法开始更新下载", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private AlertDialog showPendingUpdateDialog() {
+        return new AlertDialog.Builder(requireContext())
+                .setTitle("尚有未完成的更新")
+                .setMessage("下载完成后可继续安装，也可以取消本次更新。")
+                .setPositiveButton("继续更新", (dialog, which) -> {
+                    installPermissionRequested = false;
+                    unregisterDownloadReceiver();
+                    restorePendingDownload();
+                })
+                .setNegativeButton("取消更新", (dialog, which) -> cancelPendingUpdate())
+                .setNeutralButton("稍后", null)
+                .show();
+    }
+
+    private void cancelPendingUpdate() {
+        Context context = requireContext().getApplicationContext();
+        long id = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (id >= 0) dm.remove(id);
+        unregisterDownloadReceiver();
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        installPermissionRequested = false;
+        Toast.makeText(context, "已取消更新", Toast.LENGTH_SHORT).show();
     }
 
     private void restorePendingDownload() {

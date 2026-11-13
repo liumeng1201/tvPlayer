@@ -155,6 +155,57 @@ public class UpdateDownloadTest {
         }
     }
 
+    @Test
+    public void pendingUpdateCanBeContinuedCancelledAndDownloadedAgain() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        AtomicLong firstId = new AtomicLong(-1);
+        AtomicLong secondId = new AtomicLong(-1);
+        DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+        try (MockMediaServer server = new MockMediaServer();
+             ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            Method download = SettingFragment.class.getDeclaredMethod("downloadApk", String.class);
+            Method pending = SettingFragment.class.getDeclaredMethod("showPendingUpdateDialog");
+            Field asked = SettingFragment.class.getDeclaredField("installPermissionRequested");
+            download.setAccessible(true);
+            pending.setAccessible(true);
+            asked.setAccessible(true);
+            activity.onActivity(a -> {
+                SettingFragment fragment = new SettingFragment();
+                a.getSupportFragmentManager().beginTransaction()
+                        .replace(R.id.fragment_container, fragment).commitNow();
+                try {
+                    download.invoke(fragment, server.baseUrl() + "/missing.apk");
+                    firstId.set(SharedPrefsHelper.getLong(context,
+                            SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
+                    assertTrue(firstId.get() > 0);
+                    asked.setBoolean(fragment, true);
+                    android.app.AlertDialog dialog = (android.app.AlertDialog) pending.invoke(fragment);
+                    dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
+                    assertFalse("An explicit retry must permit another authorization request",
+                            asked.getBoolean(fragment));
+                    assertEquals(firstId.get(), SharedPrefsHelper.getLong(context,
+                            SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
+                    dialog = (android.app.AlertDialog) pending.invoke(fragment);
+                    dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick();
+                    assertEquals(-1, SharedPrefsHelper.getLong(context,
+                            SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
+                    download.invoke(fragment, server.baseUrl() + "/missing.apk");
+                    secondId.set(SharedPrefsHelper.getLong(context,
+                            SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1));
+                    assertTrue(secondId.get() > 0);
+                    assertNotEquals(firstId.get(), secondId.get());
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                }
+            });
+        } finally {
+            if (firstId.get() > 0) dm.remove(firstId.get());
+            if (secondId.get() > 0) dm.remove(secondId.get());
+            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        }
+    }
+
     private static void waitFor(BooleanSupplier condition) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
         while (System.nanoTime() < deadline) {

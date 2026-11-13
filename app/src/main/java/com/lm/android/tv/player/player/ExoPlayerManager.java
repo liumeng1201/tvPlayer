@@ -48,6 +48,11 @@ public final class ExoPlayerManager {
     }
 
     public static void play(Context context, String url, @Nullable String subtitleUrl) {
+        play(context, url, subtitleUrl, 0, true);
+    }
+
+    public static void play(Context context, String url, @Nullable String subtitleUrl,
+                            long positionMs, boolean playWhenReady) {
         ExoPlayer player = getInstance(context);
         MediaItem.Builder media = new MediaItem.Builder().setUri(url);
         if (subtitleUrl != null && !subtitleUrl.trim().isEmpty()) {
@@ -63,9 +68,9 @@ public final class ExoPlayerManager {
                 Log.w("ExoPlayerManager", "Unsupported subtitle format: " + subtitleUrl);
             }
         }
-        player.setMediaItem(media.build());
+        player.setPlayWhenReady(playWhenReady);
+        player.setMediaItem(media.build(), positionMs);
         player.prepare();
-        player.play();
     }
 
     @Nullable

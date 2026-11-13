@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
 
 import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
@@ -21,6 +22,7 @@ import okio.Buffer;
 final class MockMediaServer implements Closeable {
     private final MockWebServer server = new MockWebServer();
     private final Set<String> requestedPaths = Collections.synchronizedSet(new HashSet<>());
+    volatile CountDownLatch directoryGate;
 
     MockMediaServer() throws IOException {
         server.setDispatcher(new Dispatcher() {
@@ -36,6 +38,15 @@ final class MockMediaServer implements Closeable {
                 }
                 String name = path.toString();
                 requestedPaths.add("/" + name);
+                CountDownLatch gate = directoryGate;
+                if (name.endsWith("files.json") && gate != null) {
+                    try {
+                        if (!gate.await(15, TimeUnit.SECONDS)) return new MockResponse().setResponseCode(503);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return new MockResponse().setResponseCode(503);
+                    }
+                }
                 byte[] bytes;
                 try (InputStream input = InstrumentationRegistry.getInstrumentation().getContext()
                         .getAssets().open("mock-library/" + name);
