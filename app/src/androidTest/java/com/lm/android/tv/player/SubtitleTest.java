@@ -64,6 +64,7 @@ public class SubtitleTest {
             String baseUrl = server.baseUrl();
             CountDownLatch firstCue = new CountDownLatch(1);
             CountDownLatch secondCue = new CountDownLatch(1);
+            CountDownLatch firstCueAfterSeek = new CountDownLatch(1);
             AtomicReference<PlaybackException> failure = new AtomicReference<>();
             StringBuilder observed = new StringBuilder();
             try {
@@ -75,7 +76,10 @@ public class SubtitleTest {
                                 if (cue.text == null) continue;
                                 observed.append('[').append(player.getCurrentPosition()).append(':')
                                         .append(cue.text).append(']');
-                                if (cue.text.toString().contains("欢迎来到模拟影院")) firstCue.countDown();
+                                if (cue.text.toString().contains("欢迎来到模拟影院")) {
+                                    firstCue.countDown();
+                                    if (secondCue.getCount() == 0) firstCueAfterSeek.countDown();
+                                }
                                 if (cue.text.toString().contains("这是第二段测试字幕")) secondCue.countDown();
                             }
                         }
@@ -111,6 +115,11 @@ public class SubtitleTest {
                             + ", cues=" + observed);
                 });
                 assertTrue("Subtitle did not advance during playback: " + state.get(), gotSecondCue);
+                assertNull("Playback failed: " + failure.get(), failure.get());
+                InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                        ExoPlayerManager.getInstance(context).seekTo(2000));
+                assertTrue("First subtitle did not reappear after seeking back",
+                        firstCueAfterSeek.await(20, TimeUnit.SECONDS));
                 assertNull("Playback failed: " + failure.get(), failure.get());
                 assertTrue("Subtitle was not requested", server.requested("/动画/第一季/第01集.srt"));
             } finally {
