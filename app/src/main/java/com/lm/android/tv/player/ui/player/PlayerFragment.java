@@ -192,6 +192,7 @@ public class PlayerFragment extends Fragment {
     }
 
     private void restoreQueue() {
+        queueLoadFailed = false;
         int generation = playbackGeneration;
         queueRequest = new FileRepository().loadFiles(path, new FileRepository.FileCallback() {
             @Override public void onSuccess(List<FileModel> files) {
@@ -385,7 +386,6 @@ public class PlayerFragment extends Fragment {
 
     private void retryPlayback() {
         if (queueLoadFailed) {
-            queueLoadFailed = false;
             retry.setVisibility(View.GONE);
             restoreQueue();
         } else {

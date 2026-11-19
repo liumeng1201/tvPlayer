@@ -39,10 +39,10 @@ public class MainFragment extends Fragment {
     private Button btnSetting;
     private Button retry;
     private OneShotPreDrawListener focusRestorer;
+    private boolean openingPage;
     private final ViewTreeObserver.OnGlobalFocusChangeListener focusListener = (oldFocus, newFocus) -> {
         if (focusRestorer == null && !openingPage) saveFocusedItem();
     };
-    private boolean openingPage;
 
     @Nullable
     @Override

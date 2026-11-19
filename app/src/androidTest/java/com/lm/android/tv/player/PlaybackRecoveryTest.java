@@ -57,11 +57,16 @@ public class PlaybackRecoveryTest {
     }
 
     private void open(ActivityScenario<MainActivity> activity, String file, boolean reload) {
+        open(activity, file, null, reload);
+    }
+
+    private void open(ActivityScenario<MainActivity> activity, String file, String subtitle, boolean reload) {
         activity.onActivity(a -> {
             FileModel video = new FileModel();
             video.type = 1;
             video.name = file;
             video.url = file;
+            video.subtitle = subtitle;
             new ViewModelProvider(a).get(PlaybackQueueViewModel.class).setVideos(
                     reload ? Collections.emptyList() : Collections.singletonList(video));
             Bundle args = new Bundle();
@@ -72,6 +77,25 @@ public class PlaybackRecoveryTest {
             a.getSupportFragmentManager().beginTransaction()
                     .replace(R.id.fragment_container, fragment).commitNow();
         });
+    }
+
+    @Test public void missingSubtitleDoesNotBlockTheVideo() throws Exception {
+        try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            open(activity, "第01集.mp4", "缺失字幕.srt", false);
+            waitFor(() -> server.requested(PATH + "缺失字幕.srt"));
+            waitFor(() -> {
+                AtomicBoolean playingWithoutSubtitle = new AtomicBoolean();
+                activity.onActivity(a -> {
+                    PlayerView playerView = a.findViewById(R.id.player_view);
+                    Player player = playerView.getPlayer();
+                    playingWithoutSubtitle.set(player != null && player.isPlaying()
+                            && player.getCurrentMediaItem() != null
+                            && player.getCurrentMediaItem().localConfiguration != null
+                            && player.getCurrentMediaItem().localConfiguration.subtitleConfigurations.isEmpty());
+                });
+                return playingWithoutSubtitle.get();
+            });
+        }
     }
 
     private boolean playing(ActivityScenario<MainActivity> activity) {

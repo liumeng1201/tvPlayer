@@ -23,6 +23,7 @@ final class MockMediaServer implements Closeable {
     private final MockWebServer server = new MockWebServer();
     private final Set<String> requestedPaths = Collections.synchronizedSet(new HashSet<>());
     volatile CountDownLatch directoryGate;
+    volatile String unavailablePath;
 
     MockMediaServer() throws IOException {
         server.setDispatcher(new Dispatcher() {
@@ -38,6 +39,7 @@ final class MockMediaServer implements Closeable {
                 }
                 String name = path.toString();
                 requestedPaths.add("/" + name);
+                if (("/" + name).equals(unavailablePath)) return new MockResponse().setResponseCode(404);
                 CountDownLatch gate = directoryGate;
                 if (name.endsWith("files.json") && gate != null) {
                     try {

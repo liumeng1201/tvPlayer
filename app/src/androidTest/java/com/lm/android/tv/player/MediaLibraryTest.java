@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import android.content.Context;
 import android.view.View;
 import android.view.KeyEvent;
+import android.widget.ImageView;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.lifecycle.ViewModelProvider;
@@ -170,6 +171,48 @@ public class MediaLibraryTest {
         } finally {
             Urls.serverUrl = previousUrl;
             context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        }
+    }
+
+    @Test
+    public void retriesAnUnavailableImageWithTheRemote() throws Exception {
+        String previousUrl = Urls.serverUrl;
+        try (MockMediaServer server = new MockMediaServer()) {
+            Urls.serverUrl = server.baseUrl();
+            server.unavailablePath = "/相册/蓝天.png";
+            try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+                waitFor("root directory", () -> gridHas(activity, 3, "动画"));
+                activity.onActivity(a -> {
+                    RecyclerView grid = a.findViewById(R.id.rv_grid);
+                    RecyclerView.ViewHolder album = grid.findViewHolderForAdapterPosition(2);
+                    assertNotNull(album);
+                    album.itemView.performClick();
+                });
+                waitFor("photo album", () -> gridHas(activity, 1, "蓝天"));
+                clickFirstItem(activity);
+                waitFor("image retry to receive focus", () -> {
+                    AtomicBoolean focused = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        View retry = a.findViewById(R.id.btn_retry_image);
+                        focused.set(retry != null && retry.hasFocus());
+                    });
+                    return focused.get();
+                });
+                server.unavailablePath = null;
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);
+                waitFor("photo after retry", () -> {
+                    AtomicBoolean loaded = new AtomicBoolean();
+                    activity.onActivity(a -> {
+                        ImageView image = a.findViewById(R.id.iv_image);
+                        loaded.set(image != null && image.getDrawable() != null);
+                    });
+                    return loaded.get();
+                });
+                activity.onActivity(MainActivity::onBackPressed);
+                waitFor("focus on the viewed photo", () -> isGridItemFocused(activity, 0));
+            }
+        } finally {
+            Urls.serverUrl = previousUrl;
         }
     }
 
