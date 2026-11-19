@@ -30,6 +30,7 @@ import com.lm.android.tv.player.util.ParentalControlManager;
 public class MainFragment extends Fragment {
     private static final int GRID_COLUMNS = 4;
     private static final int GRID_SPACING_DP = 12;
+    private static final String FOCUSED_ITEM = "focused_grid_item";
 
     private MainViewModel viewModel;
     private FileGridAdapter adapter;
@@ -39,9 +40,11 @@ public class MainFragment extends Fragment {
     private Button btnSetting;
     private Button retry;
     private OneShotPreDrawListener focusRestorer;
+    private int focusGeneration;
+    private int restoredFocus = RecyclerView.NO_POSITION;
     private boolean openingPage;
     private final ViewTreeObserver.OnGlobalFocusChangeListener focusListener = (oldFocus, newFocus) -> {
-        if (focusRestorer == null && !openingPage) saveFocusedItem();
+        if (isResumed() && focusRestorer == null && !openingPage) saveFocusedItem();
     };
 
     @Nullable
@@ -55,6 +58,9 @@ public class MainFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         viewModel = new ViewModelProvider(this).get(MainViewModel.class);
+        if (savedInstanceState != null) {
+            restoredFocus = savedInstanceState.getInt(FOCUSED_ITEM, RecyclerView.NO_POSITION);
+        }
         tvTitle = view.findViewById(R.id.tv_title);
         tvError = view.findViewById(R.id.tv_error);
         btnSetting = view.findViewById(R.id.btn_setting);
@@ -83,10 +89,7 @@ public class MainFragment extends Fragment {
     }
 
     private void render(MainViewModel.DirectoryState state) {
-        if (focusRestorer != null) {
-            focusRestorer.removeListener();
-            focusRestorer = null;
-        }
+        cancelFocusRestore();
         tvTitle.setText(state.title);
         btnSetting.setVisibility(viewModel.isRoot() ? View.VISIBLE : View.GONE);
         adapter.setCurrentPath(state.path);
@@ -101,7 +104,10 @@ public class MainFragment extends Fragment {
             showStatus(getString(R.string.directory_empty));
         } else {
             tvError.setVisibility(View.GONE);
-            restoreFocus(Math.min(viewModel.getFocusPosition(), state.files.size() - 1));
+            int position = restoredFocus == RecyclerView.NO_POSITION
+                    ? viewModel.getFocusPosition() : restoredFocus;
+            restoredFocus = RecyclerView.NO_POSITION;
+            restoreFocus(Math.min(position, state.files.size() - 1));
         }
     }
 
@@ -111,19 +117,31 @@ public class MainFragment extends Fragment {
     }
 
     private void restoreFocus(int position) {
+        RecyclerView grid = recyclerView;
+        int generation = focusGeneration;
         int target = Math.max(0, position);
-        recyclerView.scrollToPosition(target);
-        focusRestorer = OneShotPreDrawListener.add(recyclerView, () -> {
+        grid.scrollToPosition(target);
+        focusRestorer = OneShotPreDrawListener.add(grid, () -> grid.post(() -> {
+            if (generation != focusGeneration) return;
             focusRestorer = null;
-            RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(target);
+            RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(target);
             if (holder != null) holder.itemView.requestFocus();
-        });
+        }));
+    }
+
+    private void cancelFocusRestore() {
+        focusGeneration++;
+        if (focusRestorer != null) {
+            focusRestorer.removeListener();
+            focusRestorer = null;
+        }
     }
 
     private void onItemClicked(int position, FileModel item) {
         if (openingPage || adapter.getItem(position) != item) return;
         viewModel.saveFocusPosition(position);
         if (item.isDirectory()) {
+            restoredFocus = RecyclerView.NO_POSITION;
             viewModel.navigateTo(item.name);
         } else if (item.isVideo()) {
             openPlayer(position);
@@ -167,12 +185,23 @@ public class MainFragment extends Fragment {
                 .commit();
     }
 
-    private void saveFocusedItem() {
-        if (recyclerView == null) return;
+    private int getFocusedPosition() {
+        if (recyclerView == null) return RecyclerView.NO_POSITION;
         View focused = recyclerView.getFocusedChild();
-        if (focused != null) {
-            viewModel.saveFocusPosition(recyclerView.getChildAdapterPosition(focused));
+        return focused == null ? RecyclerView.NO_POSITION : recyclerView.getChildAdapterPosition(focused);
+    }
+
+    private void saveFocusedItem() {
+        viewModel.saveFocusPosition(getFocusedPosition());
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        int focusedPosition = getFocusedPosition();
+        if (!openingPage && focusedPosition != RecyclerView.NO_POSITION) {
+            outState.putInt(FOCUSED_ITEM, focusedPosition);
         }
+        super.onSaveInstanceState(outState);
     }
 
     @Override
@@ -183,10 +212,7 @@ public class MainFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
-        if (focusRestorer != null) {
-            focusRestorer.removeListener();
-            focusRestorer = null;
-        }
+        cancelFocusRestore();
         recyclerView.getViewTreeObserver().removeOnGlobalFocusChangeListener(focusListener);
         recyclerView.setAdapter(null);
         recyclerView = null;
@@ -200,6 +226,7 @@ public class MainFragment extends Fragment {
 
     public boolean onBackPressed() {
         saveFocusedItem();
+        restoredFocus = RecyclerView.NO_POSITION;
         return viewModel.navigateUp();
     }
 }

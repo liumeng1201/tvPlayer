@@ -89,9 +89,7 @@ public class PlaybackRecoveryTest {
                     PlayerView playerView = a.findViewById(R.id.player_view);
                     Player player = playerView.getPlayer();
                     playingWithoutSubtitle.set(player != null && player.isPlaying()
-                            && player.getCurrentMediaItem() != null
-                            && player.getCurrentMediaItem().localConfiguration != null
-                            && player.getCurrentMediaItem().localConfiguration.subtitleConfigurations.isEmpty());
+                            && player.getCurrentCues().cues.isEmpty());
                 });
                 return playingWithoutSubtitle.get();
             });
