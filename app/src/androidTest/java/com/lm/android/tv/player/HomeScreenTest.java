@@ -2,10 +2,12 @@ package com.lm.android.tv.player;
 
 import static org.junit.Assert.*;
 
+import android.view.KeyEvent;
 import android.view.View;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.lm.android.tv.player.util.Urls;
 
@@ -23,11 +25,11 @@ import okhttp3.mockwebserver.RecordedRequest;
 @RunWith(AndroidJUnit4.class)
 public class HomeScreenTest {
     @Test
-    public void malformedDirectoryShowsErrorInsteadOfCrashing() throws Exception {
+    public void malformedDirectoryCanBeRetriedWithTheRemote() throws Exception {
         String previousUrl = Urls.serverUrl;
         try (MockWebServer server = new MockWebServer()) {
             server.enqueue(new MockResponse().setBody("<html>invalid</html>"));
-            server.enqueue(new MockResponse().setBody("<html>invalid</html>"));
+            server.enqueue(new MockResponse().setBody("[{\"name\":\"动画\",\"type\":0}]"));
             server.start();
             Urls.serverUrl = server.url("/").toString().replaceAll("/$", "");
             try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
@@ -36,12 +38,25 @@ public class HomeScreenTest {
                 while (System.nanoTime() < deadline && error.get() == 0) {
                     activity.onActivity(a -> {
                         android.widget.TextView view = a.findViewById(R.id.tv_error);
+                        View retry = a.findViewById(R.id.btn_retry_directory);
                         if (view != null && view.getVisibility() == View.VISIBLE
-                                && view.getText().toString().contains("目录数据格式错误")) error.set(1);
+                                && view.getText().toString().contains("目录数据格式错误")
+                                && retry.hasFocus()) error.set(1);
                     });
                     Thread.sleep(100);
                 }
                 assertEquals("Malformed response should show a directory error", 1, error.get());
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);
+                AtomicInteger size = new AtomicInteger();
+                deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+                while (System.nanoTime() < deadline && size.get() == 0) {
+                    activity.onActivity(a -> {
+                        RecyclerView grid = a.findViewById(R.id.rv_grid);
+                        size.set(grid.getAdapter().getItemCount());
+                    });
+                    Thread.sleep(100);
+                }
+                assertEquals("Remote retry should load the replacement response", 1, size.get());
             }
         } finally {
             Urls.serverUrl = previousUrl;

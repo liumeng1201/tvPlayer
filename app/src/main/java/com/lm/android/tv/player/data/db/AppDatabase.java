@@ -12,7 +12,7 @@ import java.util.concurrent.Executors;
 /**
  * 视频进度数据库
  */
-@Database(entities = {VideoProgressEntity.class}, version = 2, exportSchema = false)
+@Database(entities = {VideoProgressEntity.class}, version = 2, exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
 
     public abstract VideoProgressDao videoProgressDao();
@@ -28,7 +28,7 @@ public abstract class AppDatabase extends RoomDatabase {
                             context.getApplicationContext(),
                             AppDatabase.class,
                             "player.db"
-                    ).fallbackToDestructiveMigration().build();
+                    ).build();
                 }
             }
         }

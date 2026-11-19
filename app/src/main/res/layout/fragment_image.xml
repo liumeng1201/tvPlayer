@@ -20,4 +20,15 @@
         android:layout_margin="16dp"
         android:contentDescription="@null"
         android:scaleType="centerInside" />
+
+    <Button
+        android:id="@+id/btn_retry_image"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:background="@drawable/bg_grid_item"
+        android:focusable="true"
+        android:paddingHorizontal="16dp"
+        android:text="@string/retry_image"
+        android:visibility="gone" />
 </RelativeLayout>

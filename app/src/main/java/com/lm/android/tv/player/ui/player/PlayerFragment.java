@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -22,15 +23,15 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.common.Player;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.ui.PlayerView;
 
 import com.lm.android.tv.player.R;
 import com.lm.android.tv.player.data.db.AppDatabase;
+import com.lm.android.tv.player.data.db.VideoProgressDao;
 import com.lm.android.tv.player.data.db.VideoProgressEntity;
 import com.lm.android.tv.player.data.model.FileModel;
 import com.lm.android.tv.player.data.repository.FileRepository;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import com.lm.android.tv.player.player.ExoPlayerManager;
 import com.lm.android.tv.player.util.ParentalControlManager;
 import com.lm.android.tv.player.util.SharedPrefsHelper;
@@ -39,6 +40,9 @@ import com.lm.android.tv.player.util.Urls;
 import java.util.ArrayList;
 import java.util.List;
 import java.io.IOException;
+import java.util.function.Consumer;
+
+import okhttp3.Call;
 
 /**
  * 视频播放页面 —— 全屏播放 + 遥控器控制
@@ -47,7 +51,8 @@ public class PlayerFragment extends Fragment {
 
     public static final String ARG_PATH = "path";
     public static final String ARG_INDEX = "index";
-    public static final String ARG_VIDEO_LIST = "video_list";
+    private static final String TAG = "PlayerFragment";
+    private static final long RESUME_LOOKUP_TIMEOUT_MS = 5000;
 
     private PlayerView playerView;
     private TextView tvTitle;
@@ -57,9 +62,11 @@ public class PlayerFragment extends Fragment {
     private ProgressBar progressBar;
     private TextView tvProgressCurrent;
     private TextView tvProgressTotal;
+    private TextView retry;
 
     private String path;
     private ArrayList<FileModel> videoList = new ArrayList<>();
+    private ArrayList<Integer> gridPositions = new ArrayList<>();
     private int currentIndex;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -80,7 +87,13 @@ public class PlayerFragment extends Fragment {
     private long restoredPositionMs = -1;
     private boolean pendingInitialPlayback;
     private boolean resumeLookupPending;
+    private boolean playAfterResumeLookup;
+    private Runnable resumeLookupTimeout;
+    private Call queueRequest;
+    private boolean queueLoadFailed;
     private String queueRestoreError;
+    private String currentSubtitleUrl;
+    private boolean skipSubtitle;
 
     // 续播相关
     private String currentVideoUrl;          // 当前播放的视频 URL（用于 Room 操作）
@@ -95,13 +108,14 @@ public class PlayerFragment extends Fragment {
         super.onCreate(savedInstanceState);
 
         Bundle args = getArguments();
+        path = "/";
         if (args != null) {
             path = args.getString(ARG_PATH, "/");
             currentIndex = args.getInt(ARG_INDEX, 0);
-            videoList = new ViewModelProvider(requireActivity()).get(PlaybackQueueViewModel.class).getVideos();
-            if (videoList == null) {
-                videoList = new ArrayList<>();
-            }
+            PlaybackQueueViewModel queue = new ViewModelProvider(requireActivity())
+                    .get(PlaybackQueueViewModel.class);
+            videoList = queue.getVideos();
+            gridPositions = queue.getGridPositions();
         }
         if (savedInstanceState != null) {
             currentIndex = savedInstanceState.getInt("current_index", currentIndex);
@@ -109,13 +123,20 @@ public class PlayerFragment extends Fragment {
             restoredVideoFile = savedInstanceState.getString("current_video_file");
             restoredPositionMs = savedInstanceState.getLong("position_ms", -1);
         }
+        int restoredIndex = findRestoredIndex(videoList);
+        if (restoredIndex < 0) {
+            videoList.clear();
+            gridPositions.clear();
+        } else {
+            currentIndex = restoredIndex;
+        }
     }
 
     @Override
     public void onSaveInstanceState(@NonNull Bundle outState) {
         outState.putInt("current_index", currentIndex);
         outState.putBoolean("paused", pendingInitialPlayback ? restorePaused
-                : !ExoPlayerManager.wantsToPlay() && !resumeAfterLifecyclePause);
+                : !wantsPlayback() && !resumeAfterLifecyclePause);
         outState.putLong("position_ms", pendingInitialPlayback ? restoredPositionMs
                 : resumeLookupPending ? -1 : ExoPlayerManager.getCurrentPosition());
         if (currentIndex >= 0 && currentIndex < videoList.size()) {
@@ -145,8 +166,9 @@ public class PlayerFragment extends Fragment {
         progressBar = view.findViewById(R.id.progress_bar);
         tvProgressCurrent = view.findViewById(R.id.tv_progress_current);
         tvProgressTotal = view.findViewById(R.id.tv_progress_total);
+        retry = view.findViewById(R.id.btn_retry_video);
+        retry.setOnClickListener(v -> retryPlayback());
 
-        setupExoPlayer();
         pendingInitialPlayback = true;
         if (videoList.isEmpty()) {
             restoreQueue();
@@ -170,48 +192,50 @@ public class PlayerFragment extends Fragment {
     }
 
     private void restoreQueue() {
-        String requestedPath = path;
         int generation = playbackGeneration;
-        new FileRepository().loadFiles(requestedPath, new FileRepository.FileCallback() {
-            @Override public void onSuccess(String json) {
-                try {
-                    List<FileModel> files = new Gson().fromJson(json, new TypeToken<List<FileModel>>() {}.getType());
-                    ArrayList<FileModel> videos = new ArrayList<>();
-                    if (files != null) for (FileModel file : files) {
-                        if (file != null && file.isVideo() && file.url != null && !file.url.isEmpty()) videos.add(file);
+        queueRequest = new FileRepository().loadFiles(path, new FileRepository.FileCallback() {
+            @Override public void onSuccess(List<FileModel> files) {
+                handler.post(() -> {
+                    if (getView() == null || generation != playbackGeneration) return;
+                    queueRequest = null;
+                    PlaybackQueueViewModel queue = new ViewModelProvider(requireActivity())
+                            .get(PlaybackQueueViewModel.class);
+                    queue.setFiles(files);
+                    ArrayList<FileModel> videos = queue.getVideos();
+                    int index = findRestoredIndex(videos);
+                    if (index < 0) {
+                        queueRestoreError = "无法恢复播放列表";
+                        showQueueRestoreError();
+                        return;
                     }
-                    handler.post(() -> {
-                        if (!isAdded() || getView() == null || generation != playbackGeneration) return;
-                        if (restoredVideoFile != null) {
-                            currentIndex = -1;
-                            for (int i = 0; i < videos.size(); i++) {
-                                if (restoredVideoFile.equals(videos.get(i).url)) {
-                                    currentIndex = i;
-                                    break;
-                                }
-                            }
-                        }
-                        if (videos.isEmpty() || currentIndex < 0 || currentIndex >= videos.size()) {
-                            queueRestoreError = "无法恢复播放列表";
-                            showQueueRestoreError();
-                            return;
-                        }
-                        videoList = videos;
-                        new ViewModelProvider(requireActivity()).get(PlaybackQueueViewModel.class).setVideos(videos);
-                        startCurrentVideo();
-                    });
-                } catch (RuntimeException e) {
-                    onError(new IOException("播放列表格式错误", e));
-                }
+                    currentIndex = index;
+                    videoList = videos;
+                    gridPositions = queue.getGridPositions();
+                    startCurrentVideo();
+                });
             }
             @Override public void onError(IOException error) {
                 handler.post(() -> {
-                    if (!isAdded() || getView() == null || generation != playbackGeneration) return;
-                    queueRestoreError = "无法恢复播放列表，请检查网络";
-                    showQueueRestoreError();
+                    if (getView() == null || generation != playbackGeneration) return;
+                    queueRequest = null;
+                    queueLoadFailed = true;
+                    showRetry(R.string.retry_playlist);
                 });
             }
         });
+    }
+
+    private int findRestoredIndex(List<FileModel> videos) {
+        if (currentIndex >= 0 && currentIndex < videos.size()
+                && (restoredVideoFile == null || restoredVideoFile.equals(videos.get(currentIndex).url))) {
+            return currentIndex;
+        }
+        if (restoredVideoFile != null) {
+            for (int i = 0; i < videos.size(); i++) {
+                if (restoredVideoFile.equals(videos.get(i).url)) return i;
+            }
+        }
+        return -1;
     }
 
     @OptIn(markerClass = UnstableApi.class)
@@ -221,17 +245,30 @@ public class PlayerFragment extends Fragment {
         playerListener = new Player.Listener() {
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
+                if (isSubtitleHttpError(error)) {
+                    long position = resumeLookupPending ? -1 : ExoPlayerManager.getCurrentPosition();
+                    boolean paused = !wantsPlayback();
+                    int generation = playbackGeneration;
+                    handler.post(() -> {
+                        if (!isResumed() || generation != playbackGeneration) return;
+                        skipSubtitle = true;
+                        restoredPositionMs = position;
+                        restorePaused = paused;
+                        Toast.makeText(requireContext(), R.string.subtitle_unavailable, Toast.LENGTH_SHORT).show();
+                        playCurrent();
+                    });
+                    return;
+                }
                 flushAccumulatedTime();
                 playingSinceElapsed = -1;
                 stopAccumulatedTimeTracking();
                 resumeAfterLifecyclePause = false;
+                playAfterResumeLookup = false;
                 if (getContext() != null) {
                     ParentalControlManager.recordPlaybackPause(requireContext());
                 }
                 ExoPlayerManager.pause();
-                if (getContext() != null) {
-                    Toast.makeText(getContext(), "播放失败，请按确认键重试", Toast.LENGTH_LONG).show();
-                }
+                showRetry(R.string.retry_playback);
             }
             @Override
             public void onPlaybackStateChanged(int playbackState) {
@@ -280,10 +317,15 @@ public class PlayerFragment extends Fragment {
         FileModel item = videoList.get(currentIndex);
         String name = item.name;
         String url = Urls.buildEncodedFileUrl(path, item.url);
-        String subtitleUrl = item.subtitle == null || item.subtitle.trim().isEmpty()
+        if (!url.equals(currentVideoUrl)) skipSubtitle = false;
+        currentSubtitleUrl = skipSubtitle || item.subtitle == null || item.subtitle.trim().isEmpty()
                 ? null : Urls.buildEncodedFileUrl(path, item.subtitle);
         currentVideoUrl = url;
         playbackGeneration++;
+        clearResumeTimeout();
+        cancelRestartHint();
+        hasPendingRestart = false;
+        tvRestartHint.setVisibility(View.GONE);
 
         tvTitle.setText(name);
 
@@ -295,57 +337,100 @@ public class PlayerFragment extends Fragment {
         if (startPlaying ? !ParentalControlManager.tryStartPlayback(requireContext())
                 : ParentalControlManager.isInCooldown(requireContext())) {
             String remaining = ParentalControlManager.getCooldownRemainingText(requireContext());
-            Toast.makeText(getContext(), "休息时间还没结束，请" + remaining + "之后再回来~", Toast.LENGTH_LONG).show();
-            // 延后执行 onBackPressed，避免在 Fragment 创建中直接操作 FragmentManager
-            handler.post(() -> {
-                if (isAdded()) {
-                    requireActivity().onBackPressed();
-                }
-            });
+            queueRestoreError = "休息时间还没结束，请" + remaining + "之后再回来~";
+            showQueueRestoreError();
             return;
         }
         pendingCooldownExit = ParentalControlManager.isLimitReached(requireContext());
+        if (currentIndex < gridPositions.size()) {
+            SharedPrefsHelper.putLastPosition(requireContext(), path, gridPositions.get(currentIndex));
+        }
 
         titleShouldShow = true;
         updateTitleVisibility();
         scheduleTitleHide();
 
+        retry.setVisibility(View.GONE);
+        restorePlaybackFocus();
+        if (playerListener == null) setupExoPlayer();
         resumeLookupPending = startPosition < 0;
-        ExoPlayerManager.play(requireContext(), url, subtitleUrl,
-                Math.max(0, startPosition), startPlaying);
-        // 页面即时状态优先于跨次打开时使用的数据库进度。
-        if (startPosition < 0) checkResumePlayback();
+        playAfterResumeLookup = startPlaying;
+        ExoPlayerManager.play(requireContext(), url, currentSubtitleUrl,
+                Math.max(0, startPosition), startPlaying && !resumeLookupPending);
+        if (resumeLookupPending) checkResumePlayback();
+    }
+
+    @OptIn(markerClass = UnstableApi.class)
+    private boolean isSubtitleHttpError(PlaybackException error) {
+        if (currentSubtitleUrl == null) return false;
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof HttpDataSource.HttpDataSourceException) {
+                HttpDataSource.HttpDataSourceException httpError = (HttpDataSource.HttpDataSourceException) cause;
+                return currentSubtitleUrl.equals(httpError.dataSpec.uri.toString());
+            }
+        }
+        return false;
+    }
+
+    private void showRetry(int label) {
+        retry.setText(label);
+        retry.setVisibility(View.VISIBLE);
+        retry.requestFocus();
+    }
+
+    private void restorePlaybackFocus() {
+        playerView.setFocusable(true);
+        playerView.requestFocus();
+    }
+
+    private void retryPlayback() {
+        if (queueLoadFailed) {
+            queueLoadFailed = false;
+            retry.setVisibility(View.GONE);
+            restoreQueue();
+        } else {
+            resumeIfAllowed();
+        }
     }
 
     // ===================== 续播逻辑 =====================
 
-    /**
-     * 异步查询 Room，若有有效进度则 seekTo 并显示续播提示
-     * 使用已保存的 durationMs 判断，不依赖 ExoPlayer（可能尚未就绪）
-     */
     private void checkResumePlayback() {
-        Context context = getContext();
-        if (currentVideoUrl == null || context == null) return;
-        Context appContext = context.getApplicationContext();
+        Context appContext = requireContext().getApplicationContext();
         String videoUrl = currentVideoUrl;
         int generation = playbackGeneration;
 
+        resumeLookupTimeout = () -> finishResumeLookup(generation, null);
+        handler.postDelayed(resumeLookupTimeout, RESUME_LOOKUP_TIMEOUT_MS);
         AppDatabase.getDbExecutor().execute(() -> {
-            VideoProgressEntity saved = AppDatabase.getInstance(appContext)
-                    .videoProgressDao().getProgress(videoUrl);
-
-            handler.post(() -> {
-                if (isAdded() && getView() != null && generation == playbackGeneration
-                        && videoUrl.equals(currentVideoUrl)) {
-                    resumeLookupPending = false;
-                    if (saved != null && saved.getPositionMs() > 0 && saved.getDurationMs() > 0
-                            && saved.getDurationMs() - saved.getPositionMs() > 10_000) {
-                        ExoPlayerManager.seekTo(saved.getPositionMs());
-                        showRestartHint(saved.getPositionMs(), saved.getDurationMs());
-                    }
-                }
-            });
+            VideoProgressEntity saved = null;
+            try {
+                saved = AppDatabase.getInstance(appContext).videoProgressDao().getProgress(videoUrl);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "无法读取续播进度", e);
+            }
+            VideoProgressEntity progress = saved;
+            handler.post(() -> finishResumeLookup(generation, progress));
         });
+    }
+
+    private void finishResumeLookup(int generation, @Nullable VideoProgressEntity saved) {
+        if (!resumeLookupPending || generation != playbackGeneration || getView() == null) return;
+        clearResumeTimeout();
+        resumeLookupPending = false;
+        if (saved != null && saved.getPositionMs() > 0
+                && saved.getDurationMs() - saved.getPositionMs() > 10_000) {
+            ExoPlayerManager.seekTo(saved.getPositionMs());
+            showRestartHint(saved.getPositionMs(), saved.getDurationMs());
+        }
+        if (playAfterResumeLookup && isResumed()) ExoPlayerManager.resume();
+    }
+
+    private void clearResumeTimeout() {
+        if (resumeLookupTimeout != null) {
+            handler.removeCallbacks(resumeLookupTimeout);
+            resumeLookupTimeout = null;
+        }
     }
 
     /**
@@ -424,11 +509,8 @@ public class PlayerFragment extends Fragment {
 
         long finalPos = pos;
         long finalDuration = duration;
-        AppDatabase.getDbExecutor().execute(() -> {
-            AppDatabase.getInstance(appContext).videoProgressDao()
-                    .insertOrUpdate(new VideoProgressEntity(
-                            videoUrl, finalPos, finalDuration, System.currentTimeMillis()));
-        });
+        writeProgress(appContext, dao -> dao.insertOrUpdate(new VideoProgressEntity(
+                videoUrl, finalPos, finalDuration, System.currentTimeMillis())));
     }
 
     private void startPeriodicSave() {
@@ -453,8 +535,16 @@ public class PlayerFragment extends Fragment {
         Context appContext = context.getApplicationContext();
         String videoUrl = currentVideoUrl;
 
+        writeProgress(appContext, dao -> dao.delete(videoUrl));
+    }
+
+    private void writeProgress(Context appContext, Consumer<VideoProgressDao> write) {
         AppDatabase.getDbExecutor().execute(() -> {
-            AppDatabase.getInstance(appContext).videoProgressDao().delete(videoUrl);
+            try {
+                write.accept(AppDatabase.getInstance(appContext).videoProgressDao());
+            } catch (RuntimeException e) {
+                Log.w(TAG, "无法更新续播进度", e);
+            }
         });
     }
 
@@ -498,7 +588,6 @@ public class PlayerFragment extends Fragment {
     private void onPlaybackCompleted() {
         if (pendingInitialPlayback || currentVideoUrl == null || !ExoPlayerManager.hasMediaItem()) return;
         flushAccumulatedTime();
-        ParentalControlManager.finishPlaybackTracking(requireContext());
         playingSinceElapsed = -1;
         stopAccumulatedTimeTracking();
         deleteProgress();
@@ -508,20 +597,19 @@ public class PlayerFragment extends Fragment {
             pendingCooldownExit = false;
             ParentalControlManager.startCooldown(requireContext());
             Toast.makeText(getContext(), "小朋友，该休息了，2个小时后可再次观看~", Toast.LENGTH_LONG).show();
-            ExoPlayerManager.release();
+            releasePlayer();
             requireActivity().onBackPressed();
             return;
         }
 
-        SharedPrefsHelper.putLastPosition(requireContext(), path, currentIndex);
-
+        ParentalControlManager.finishPlaybackTracking(requireContext());
         int playMode = ParentalControlManager.getPlayMode(requireContext());
 
         if (playMode == 0) {
             int nextIndex = findNextVideoIndex();
             if (nextIndex < 0) {
                 Toast.makeText(getContext(), "播放完毕", Toast.LENGTH_SHORT).show();
-                ExoPlayerManager.release();
+                releasePlayer();
                 requireActivity().onBackPressed();
                 return;
             }
@@ -661,17 +749,23 @@ public class PlayerFragment extends Fragment {
     // ===================== 遥控器按键处理 =====================
 
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        boolean playbackKey = keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
-                || keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
+        boolean confirm = keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
+                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        boolean playbackKey = confirm || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
+        if (confirm && event.getRepeatCount() > 0) return true;
+        if (confirm && retry != null && retry.getVisibility() == View.VISIBLE) {
+            retryPlayback();
+            return true;
+        }
         if (playbackKey && (pendingInitialPlayback || !ExoPlayerManager.hasMediaItem())) return true;
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
-            if (ExoPlayerManager.wantsToPlay()) {
+        if (confirm) {
+            if (wantsPlayback()) {
                 flushAccumulatedTime();
                 playingSinceElapsed = -1;
                 stopAccumulatedTimeTracking();
                 ParentalControlManager.recordPlaybackPause(requireContext());
+                playAfterResumeLookup = false;
                 ExoPlayerManager.pause();
             } else {
                 resumeIfAllowed();
@@ -684,24 +778,30 @@ public class PlayerFragment extends Fragment {
                 return true;
             }
             // 否则正常快退
-            cancelPendingResumeLookup();
+            boolean resume = cancelPendingResumeLookup();
             ExoPlayerManager.seekBack();
+            if (resume) resumeIfAllowed();
             showSeekIndicator("快退");
             return true;
         } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            cancelPendingResumeLookup();
+            boolean resume = cancelPendingResumeLookup();
             ExoPlayerManager.seekForward();
+            if (resume) resumeIfAllowed();
             showSeekIndicator("快进");
             return true;
         }
         return false;
     }
 
-    private void cancelPendingResumeLookup() {
-        if (resumeLookupPending) {
-            playbackGeneration++;
-            resumeLookupPending = false;
-        }
+    private boolean wantsPlayback() {
+        return resumeLookupPending ? playAfterResumeLookup : ExoPlayerManager.wantsToPlay();
+    }
+
+    private boolean cancelPendingResumeLookup() {
+        if (!resumeLookupPending) return false;
+        resumeLookupPending = false;
+        clearResumeTimeout();
+        return playAfterResumeLookup;
     }
 
     // ===================== 生命周期 =====================
@@ -713,9 +813,10 @@ public class PlayerFragment extends Fragment {
         flushAccumulatedTime();
         playingSinceElapsed = -1;
         stopAccumulatedTimeTracking();
-        resumeAfterLifecyclePause = !pendingInitialPlayback && ExoPlayerManager.wantsToPlay();
+        resumeAfterLifecyclePause = !pendingInitialPlayback && wantsPlayback();
         Activity activity = getActivity();
-        if (getContext() != null && (activity == null || !activity.isChangingConfigurations())) {
+        if (playerListener != null && ExoPlayerManager.hasMediaItem()
+                && (activity == null || !activity.isChangingConfigurations())) {
             ParentalControlManager.recordPlaybackPause(requireContext());
         }
         ExoPlayerManager.pause();
@@ -749,18 +850,40 @@ public class PlayerFragment extends Fragment {
             return;
         }
         pendingCooldownExit = ParentalControlManager.isLimitReached(context);
-        ExoPlayerManager.resume();
+        retry.setVisibility(View.GONE);
+        restorePlaybackFocus();
+        if (resumeLookupPending) {
+            playAfterResumeLookup = true;
+            if (ExoPlayerManager.getInstance(context).getPlaybackState() == Player.STATE_IDLE) {
+                ExoPlayerManager.getInstance(context).prepare();
+            }
+        } else {
+            ExoPlayerManager.resume();
+        }
     }
 
     @Override
-    public void onDestroyView() {
-        playbackGeneration++;
-        if (playerListener != null) {
-            ExoPlayerManager.removeListener(playerListener);
-            playerListener = null;
+    public void onStop() {
+        if (playerListener != null && ExoPlayerManager.hasMediaItem()) {
+            restoredPositionMs = resumeLookupPending ? -1 : ExoPlayerManager.getCurrentPosition();
+            restorePaused = !resumeAfterLifecyclePause;
+            resumeAfterLifecyclePause = false;
+            pendingInitialPlayback = true;
         }
-        if (playerView != null) playerView.setPlayer(null);
-        super.onDestroyView();
+        releasePlayer();
+        showProgress(false);
+        super.onStop();
+    }
+
+    private void releasePlayer() {
+        if (playerListener == null) return;
+        playbackGeneration++;
+        resumeLookupPending = false;
+        clearResumeTimeout();
+        ExoPlayerManager.removeListener(playerListener);
+        playerListener = null;
+        playerView.setPlayer(null);
+        ExoPlayerManager.release();
         cancelTitleHide();
         cancelSeekHide();
         cancelRestartHint();
@@ -770,13 +893,16 @@ public class PlayerFragment extends Fragment {
     }
 
     @Override
-    public void onDestroy() {
-        super.onDestroy();
-        // 确保退出时保存进度
-        saveCurrentProgress();
-        Activity activity = getActivity();
-        if (activity != null && !activity.isChangingConfigurations()) {
-            ExoPlayerManager.release();
+    public void onDestroyView() {
+        releasePlayer();
+        playbackGeneration++;
+        if (queueRequest != null) {
+            queueRequest.cancel();
+            queueRequest = null;
         }
+        handler.removeCallbacksAndMessages(null);
+        playerView = null;
+        retry = null;
+        super.onDestroyView();
     }
 }

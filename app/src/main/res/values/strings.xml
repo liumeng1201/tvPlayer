@@ -2,4 +2,11 @@
     <string name="app_name">儿童视频</string>
     <string name="setting_title">儿童视频</string>
     <string name="btn_setting">设置</string>
+    <string name="btn_retry">重试</string>
+    <string name="directory_loading">加载中…</string>
+    <string name="directory_empty">目录为空</string>
+    <string name="retry_image">图片加载失败，按确认键重试</string>
+    <string name="retry_playback">播放失败，按确认键重试</string>
+    <string name="retry_playlist">播放列表加载失败，按确认键重试</string>
+    <string name="subtitle_unavailable">字幕加载失败，继续播放视频</string>
 </resources>

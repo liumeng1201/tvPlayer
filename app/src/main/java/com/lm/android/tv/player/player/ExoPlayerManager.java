@@ -6,6 +6,7 @@ import android.util.Log;
 
 import androidx.annotation.OptIn;
 import androidx.annotation.Nullable;
+import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
@@ -34,6 +35,7 @@ public final class ExoPlayerManager {
             synchronized (ExoPlayerManager.class) {
                 if (instance == null) {
                     instance = new ExoPlayer.Builder(context)
+                            .setAudioAttributes(AudioAttributes.DEFAULT, true)
                             .setSeekBackIncrementMs(5000)
                             .setSeekForwardIncrementMs(5000)
                             .build();

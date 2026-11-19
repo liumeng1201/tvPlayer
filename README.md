@@ -78,7 +78,7 @@
 ## 播放与观看限制
 
 - 遥控器确认键控制播放 / 暂停，左右键快退 / 快进 5 秒；播放结束可按设置进行列表循环或单集循环。
-- 播放进度保存在 Room 数据库 `player.db`；设置、上次目录位置及观看限制保存在名为 `player` 的 SharedPreferences。当前数据库使用 `fallbackToDestructiveMigration()`，变更表结构时需要注意迁移和旧进度保留。
+- 播放进度保存在 Room 数据库 `player.db`。设置、各目录上次选中的宫格位置和观看限制保存在名为 `player` 的 SharedPreferences。数据库 schema 版本为 2，测试项目按全新安装使用。
 - 一个观看周期累计 **20 分钟实际播放时间**。达到上限后可看完当前视频，结束后进入 **2 小时冷却**；如果达到上限后中途暂停或退出，则从中断时开始冷却。
 - 未达到上限时，暂停或退出后短时间内恢复会继续累计；中断满 2 小时后再次播放会重置观看额度。具体实现和常量位于 `ParentalControlManager`、`SharedPrefsHelper` 和 `PlayerFragment`。
 
@@ -103,6 +103,6 @@ APK 默认输出到 `app/build/outputs/apk/release/`。设备测试需要已启�
 
 ## GitHub Actions
 
-推送到 `master` 或手动运行时，[`release-apk.yml`](.github/workflows/release-apk.yml) 会构建 release APK，运行 release 单元测试和 Android TV 模拟器设备测试。自动触发默认使用 API 30；手动运行可选择 API 26、30 或 34。
+推送到 `master` 或手动运行时，[`release-apk.yml`](.github/workflows/release-apk.yml) 会构建 release APK，运行 release 单元测试、Android TV 模拟器设备测试和 Lint。自动触发默认使用 API 30；手动运行可选择 API 26、30 或 34。
 
-运行成功后，可在该次 Actions 运行页面的 **Artifacts** 中下载 `release-apk`；`test-reports` 保存测试报告。两者目前均保留 **1 天**。自动化测试不能完全替代实体电视上的遥控器、视频解码、真实局域网及 APK 安装验证。
+运行成功后，可在该次 Actions 运行页面的 **Artifacts** 中下载 `release-apk`，测试报告见 `test-reports`。两者均保留 **1 天**。实体电视上的遥控器、视频解码、真实局域网及 APK 安装仍需在对应环境验证。

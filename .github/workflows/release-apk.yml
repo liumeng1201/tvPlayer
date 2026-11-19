@@ -59,6 +59,10 @@ jobs:
           disable-animations: true
           script: gradle :app:connectedReleaseAndroidTest --no-daemon
 
+      - name: Run release lint
+        if: ${{ !cancelled() }}
+        run: gradle :app:lintRelease --no-daemon
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -67,6 +71,7 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/reports/androidTests/
+            app/build/reports/lint-results-release.*
             app/build/outputs/androidTest-results/
           if-no-files-found: ignore
           retention-days: 1

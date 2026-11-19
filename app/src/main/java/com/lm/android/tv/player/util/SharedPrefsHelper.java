@@ -32,7 +32,7 @@ public final class SharedPrefsHelper {
 
     private SharedPrefsHelper() {}
 
-    private static SharedPreferences getPrefs(Context context) {
+    static SharedPreferences getPrefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 

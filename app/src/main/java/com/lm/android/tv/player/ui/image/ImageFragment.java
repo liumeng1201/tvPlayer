@@ -1,5 +1,6 @@
 package com.lm.android.tv.player.ui.image;
 
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -12,6 +13,10 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
 import com.lm.android.tv.player.R;
 import com.lm.android.tv.player.util.Urls;
 
@@ -27,6 +32,7 @@ public class ImageFragment extends Fragment {
     private String path;
     private String url;
     private String name;
+    private ImageView imageView;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -50,15 +56,42 @@ public class ImageFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        ImageView imageView = view.findViewById(R.id.iv_image);
+        imageView = view.findViewById(R.id.iv_image);
         TextView tvTitle = view.findViewById(R.id.tv_image_title);
-
         tvTitle.setText(name);
+        View retry = view.findViewById(R.id.btn_retry_image);
+        retry.setOnClickListener(v -> loadImage(retry));
+        loadImage(retry);
+    }
 
+    private void loadImage(View retry) {
+        retry.setVisibility(View.GONE);
         String fullUrl = Urls.buildEncodedFileUrl(path, url);
         Glide.with(this)
                 .load(fullUrl)
                 .centerInside()
+                .listener(new RequestListener<Drawable>() {
+                    @Override
+                    public boolean onLoadFailed(@Nullable GlideException e, Object model,
+                                                Target<Drawable> target, boolean firstResource) {
+                        retry.setVisibility(View.VISIBLE);
+                        retry.requestFocus();
+                        return false;
+                    }
+
+                    @Override
+                    public boolean onResourceReady(Drawable drawable, Object model, Target<Drawable> target,
+                                                   DataSource source, boolean firstResource) {
+                        return false;
+                    }
+                })
                 .into(imageView);
+    }
+
+    @Override
+    public void onDestroyView() {
+        Glide.with(this).clear(imageView);
+        imageView = null;
+        super.onDestroyView();
     }
 }

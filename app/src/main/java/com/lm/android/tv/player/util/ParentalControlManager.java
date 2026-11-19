@@ -1,6 +1,7 @@
 package com.lm.android.tv.player.util;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 /**
  * 播放时长限制管理器（替代原有的集数控制）
@@ -24,8 +25,10 @@ public final class ParentalControlManager {
     /** 追加播放时长（毫秒） */
     public static void addAccumulatedTime(Context context, long ms) {
         long current = getAccumulatedMs(context);
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, current + ms);
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_LAST_PLAYING_AT, System.currentTimeMillis());
+        SharedPrefsHelper.getPrefs(context).edit()
+                .putLong(SharedPrefsHelper.KEY_ACCUMULATED_MS, current + ms)
+                .putLong(SharedPrefsHelper.KEY_LAST_PLAYING_AT, System.currentTimeMillis())
+                .apply();
     }
 
     public static void markPlaybackActive(Context context) {
@@ -39,9 +42,11 @@ public final class ParentalControlManager {
     public static void recoverInterruptedPlayback(Context context) {
         long lastPlaying = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_LAST_PLAYING_AT, 0);
         if (lastPlaying <= 0) return;
-        finishPlaybackTracking(context);
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, lastPlaying);
-        if (isLimitReached(context)) startCooldownAt(context, lastPlaying);
+        SharedPreferences.Editor state = SharedPrefsHelper.getPrefs(context).edit()
+                .putLong(SharedPrefsHelper.KEY_LAST_PLAYING_AT, 0)
+                .putLong(SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, lastPlaying);
+        if (isLimitReached(context)) writeCooldown(state, lastPlaying);
+        state.apply();
         isInCooldown(context);
     }
 
@@ -74,25 +79,30 @@ public final class ParentalControlManager {
 
     /** 启动 2 小时冷却（同时重置累计时长） */
     public static void startCooldown(Context context) {
-        startCooldownAt(context, System.currentTimeMillis());
+        SharedPreferences.Editor state = SharedPrefsHelper.getPrefs(context).edit()
+                .putLong(SharedPrefsHelper.KEY_LAST_PLAYING_AT, 0);
+        writeCooldown(state, System.currentTimeMillis());
+        state.apply();
     }
 
-    private static void startCooldownAt(Context context, long startTime) {
-        long cooldownUntil = startTime + SharedPrefsHelper.COOLDOWN_MS;
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, cooldownUntil);
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, 0);
+    private static void writeCooldown(SharedPreferences.Editor state, long startTime) {
+        state.putLong(SharedPrefsHelper.KEY_COOLDOWN_UNTIL, startTime + SharedPrefsHelper.COOLDOWN_MS)
+                .putLong(SharedPrefsHelper.KEY_ACCUMULATED_MS, 0);
     }
 
     /** 记录用户或生命周期导致的中断；缓冲不算暂停。重复调用不延长休息时间。 */
     public static void recordPlaybackPause(Context context) {
-        finishPlaybackTracking(context);
-        if (SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0) != 0) return;
-        long pausedAt = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
-        if (pausedAt == 0) {
-            pausedAt = System.currentTimeMillis();
-            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, pausedAt);
+        SharedPreferences prefs = SharedPrefsHelper.getPrefs(context);
+        SharedPreferences.Editor state = prefs.edit().putLong(SharedPrefsHelper.KEY_LAST_PLAYING_AT, 0);
+        if (prefs.getLong(SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0) == 0) {
+            long pausedAt = prefs.getLong(SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
+            if (pausedAt == 0) {
+                pausedAt = System.currentTimeMillis();
+                state.putLong(SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, pausedAt);
+            }
+            if (isLimitReached(context)) writeCooldown(state, pausedAt);
         }
-        if (isLimitReached(context)) startCooldownAt(context, pausedAt);
+        state.apply();
     }
 
     /** 检查休息时间并开始或恢复一个观看周期。 */
@@ -104,9 +114,11 @@ public final class ParentalControlManager {
 
     /** 清除冷却状态 */
     private static void clearCooldown(Context context) {
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0);
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_ACCUMULATED_MS, 0);
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0);
+        SharedPrefsHelper.getPrefs(context).edit()
+                .putLong(SharedPrefsHelper.KEY_COOLDOWN_UNTIL, 0)
+                .putLong(SharedPrefsHelper.KEY_ACCUMULATED_MS, 0)
+                .putLong(SharedPrefsHelper.KEY_PLAYBACK_PAUSED_AT, 0)
+                .apply();
     }
 
     /** 获取冷却剩余时间的格式化文本 */

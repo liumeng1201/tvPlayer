@@ -11,7 +11,7 @@ public class FileModel implements Serializable {
     /** 封面图片相对路径 */
     public String cover;
     /** 类型：0=目录，1=视频，2=图片 */
-    public int type;
+    public int type = -1;
     /** 当 type=1 或 type=2 时为文件相对路径 */
     public String url;
     /** 视频对应的外挂字幕文件名，可为空 */

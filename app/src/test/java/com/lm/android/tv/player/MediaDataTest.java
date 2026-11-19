@@ -2,9 +2,8 @@ package com.lm.android.tv.player;
 
 import static org.junit.Assert.*;
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import com.lm.android.tv.player.data.model.FileModel;
+import com.lm.android.tv.player.data.repository.FileRepository;
 import com.lm.android.tv.player.util.Urls;
 
 import org.junit.Test;
@@ -31,7 +30,7 @@ public class MediaDataTest {
         String json = "[{\"name\":\"动画\",\"type\":0},"
                 + "{\"name\":\"一集\",\"type\":1,\"url\":\"一集.mp4\",\"subtitle\":\"一集.srt\"},"
                 + "{\"name\":\"封面\",\"type\":2,\"url\":\"封面.jpg\"}]";
-        List<FileModel> files = new Gson().fromJson(json, new TypeToken<List<FileModel>>() {}.getType());
+        List<FileModel> files = FileRepository.parseFiles(json);
         assertEquals(3, files.size());
         assertTrue(files.get(0).isDirectory());
         assertTrue(files.get(1).isVideo());
@@ -40,5 +39,15 @@ public class MediaDataTest {
         assertNull(files.get(0).subtitle);
         assertNull(files.get(2).subtitle);
         assertTrue(files.get(2).isImage());
+    }
+
+    @Test
+    public void distinguishesAnEmptyDirectoryFromMissingDataOrType() {
+        assertTrue(FileRepository.parseFiles("[]").isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> FileRepository.parseFiles(""));
+        assertThrows(IllegalArgumentException.class,
+                () -> FileRepository.parseFiles("[{\"name\":\"动画\"}]"));
+        assertThrows(IllegalArgumentException.class,
+                () -> FileRepository.parseFiles("[{\"name\":\"一集\",\"type\":1}]"));
     }
 }

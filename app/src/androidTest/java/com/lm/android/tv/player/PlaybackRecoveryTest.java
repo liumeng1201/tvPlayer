@@ -8,6 +8,8 @@ import android.view.KeyEvent;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.common.Player;
+import androidx.media3.ui.PlayerView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -132,9 +134,11 @@ public class PlaybackRecoveryTest {
         seedProgressAndBlockDatabase();
         try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
             open(activity, "第01集.mp4", false);
-            waitFor(() -> playing(activity));
-            activity.onActivity(a -> a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
-                    new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)));
+            activity.onActivity(a -> {
+                assertFalse("Playback must wait for the pending progress lookup", ExoPlayerManager.wantsToPlay());
+                a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
+                        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER));
+            });
             activity.recreate();
             activity.recreate();
             databaseGate.countDown();
@@ -157,8 +161,8 @@ public class PlaybackRecoveryTest {
         seedProgressAndBlockDatabase();
         try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
             open(activity, "第01集.mp4", false);
-            waitFor(() -> playing(activity));
             activity.onActivity(a -> {
+                assertFalse(ExoPlayerManager.wantsToPlay());
                 a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
                         new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER));
                 a.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT,
@@ -191,10 +195,59 @@ public class PlaybackRecoveryTest {
             });
             activity.onActivity(a -> {
                 assertFalse(ExoPlayerManager.wantsToPlay());
-                assertNull(ExoPlayerManager.getInstance(a).getCurrentMediaItem());
+                PlayerView player = a.findViewById(R.id.player_view);
+                assertNull(player.getPlayer());
             });
             activity.moveToState(Lifecycle.State.RESUMED);
             waitFor(() -> playing(activity));
+        }
+    }
+
+    @Test public void waitsForProgressBeforePlayingAtTheSavedPosition() throws Exception {
+        seedProgressAndBlockDatabase();
+        try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            open(activity, "第01集.mp4", false);
+            activity.onActivity(a -> {
+                assertTrue(ExoPlayerManager.hasMediaItem());
+                assertFalse(ExoPlayerManager.wantsToPlay());
+                assertEquals(0, ExoPlayerManager.getCurrentPosition());
+            });
+            databaseGate.countDown();
+            waitFor(() -> {
+                AtomicBoolean resumed = new AtomicBoolean();
+                activity.onActivity(a -> resumed.set(ExoPlayerManager.isPlaying()
+                        && ExoPlayerManager.getCurrentPosition() >= 5000));
+                return resumed.get();
+            });
+        }
+    }
+
+    @Test public void stoppingReleasesPlayerAndRestoresPausedPosition() throws Exception {
+        try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            open(activity, "第01集.mp4", false);
+            waitFor(() -> playing(activity));
+            activity.onActivity(a -> {
+                a.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER,
+                        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER));
+                ExoPlayerManager.seekTo(8000);
+            });
+            activity.moveToState(Lifecycle.State.CREATED);
+            activity.onActivity(a -> {
+                PlayerView player = a.findViewById(R.id.player_view);
+                assertNull(player.getPlayer());
+                assertFalse(ExoPlayerManager.hasMediaItem());
+            });
+            activity.moveToState(Lifecycle.State.RESUMED);
+            waitFor(() -> {
+                AtomicBoolean restored = new AtomicBoolean();
+                activity.onActivity(a -> {
+                    PlayerView playerView = a.findViewById(R.id.player_view);
+                    Player player = playerView.getPlayer();
+                    restored.set(player != null && !player.getPlayWhenReady()
+                            && player.getCurrentPosition() == 8000);
+                });
+                return restored.get();
+            });
         }
     }
 

@@ -5,6 +5,7 @@ import android.util.Log;
 import com.lm.android.tv.player.util.Urls;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -23,11 +24,12 @@ public final class ApiService {
     /**
      * 获取目录下的文件列表（异步回调）
      */
-    public static void fetchFiles(String path, final ApiCallback<String> callback) {
+    public static Call fetchFiles(String path, final ApiCallback<String> callback) {
         try {
-            get(Urls.buildEncodedFileUrl(path, "files.json"), callback);
+            return get(Urls.buildEncodedFileUrl(path, "files.json"), callback, 15);
         } catch (IllegalArgumentException e) {
             if (callback != null) callback.onError(new IOException("服务器地址无效", e));
+            return null;
         }
     }
 
@@ -35,10 +37,10 @@ public final class ApiService {
      * 获取更新信息
      */
     public static void fetchUpdateInfo(final ApiCallback<String> callback) {
-        get(Urls.serverUrl + "/update.json", callback);
+        get(Urls.serverUrl + "/update.json", callback, 0);
     }
 
-    private static void get(String url, final ApiCallback<String> callback) {
+    private static Call get(String url, final ApiCallback<String> callback, long timeoutSeconds) {
         Log.d(TAG, "GET: " + url);
 
         Request request = new Request.Builder()
@@ -46,7 +48,9 @@ public final class ApiService {
                 .get()
                 .build();
 
-        ApiClient.getInstance().newCall(request).enqueue(new Callback() {
+        Call requestCall = ApiClient.getInstance().newCall(request);
+        if (timeoutSeconds > 0) requestCall.timeout().timeout(timeoutSeconds, TimeUnit.SECONDS);
+        requestCall.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e(TAG, "Request failed: " + url, e);
@@ -73,6 +77,7 @@ public final class ApiService {
                 }
             }
         });
+        return requestCall;
     }
 
     /**

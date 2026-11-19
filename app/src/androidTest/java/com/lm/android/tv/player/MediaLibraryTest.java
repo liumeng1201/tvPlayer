@@ -5,6 +5,8 @@ import static org.junit.Assert.*;
 import android.content.Context;
 import android.view.View;
 import android.view.KeyEvent;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.common.text.Cue;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -13,9 +15,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.lm.android.tv.player.data.model.FileModel;
 import com.lm.android.tv.player.player.ExoPlayerManager;
+import com.lm.android.tv.player.ui.main.MainFragment;
 import com.lm.android.tv.player.ui.player.PlaybackQueueViewModel;
 import com.lm.android.tv.player.ui.widget.FileGridAdapter;
 import com.lm.android.tv.player.util.Urls;
@@ -125,10 +129,43 @@ public class MediaLibraryTest {
                 });
                 activity.onActivity(MainActivity::onBackPressed);
                 waitFor("return to season", () -> gridHas(activity, 2, "第01集"));
+                waitFor("focus on the last played episode", () -> isGridItemFocused(activity, 1));
                 activity.onActivity(MainActivity::onBackPressed);
                 waitFor("return to animation", () -> gridHas(activity, 1, "第一季"));
                 activity.onActivity(MainActivity::onBackPressed);
                 waitFor("return to root", () -> gridHas(activity, 3, "动画"));
+            }
+        } finally {
+            Urls.serverUrl = previousUrl;
+            context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        }
+    }
+
+    @Test
+    public void restoresNestedDirectoryAndDpadFocusInANewFragment() throws Exception {
+        String previousUrl = Urls.serverUrl;
+        Context context = ApplicationProvider.getApplicationContext();
+        context.getSharedPreferences("player", Context.MODE_PRIVATE).edit().clear().commit();
+        try (MockMediaServer server = new MockMediaServer()) {
+            Urls.serverUrl = server.baseUrl();
+            try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+                waitFor("root directory", () -> gridHas(activity, 3, "动画"));
+                clickFirstItem(activity);
+                waitFor("animation directory", () -> gridHas(activity, 1, "第一季"));
+                clickFirstItem(activity);
+                waitFor("first episode focus", () -> isGridItemFocused(activity, 0));
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT);
+                waitFor("second episode focus", () -> isGridItemFocused(activity, 1));
+                activity.onActivity(a -> {
+                    FragmentManager manager = a.getSupportFragmentManager();
+                    Fragment old = manager.findFragmentById(R.id.fragment_container);
+                    assertNotNull(old);
+                    MainFragment restored = new MainFragment();
+                    restored.setInitialSavedState(manager.saveFragmentInstanceState(old));
+                    manager.beginTransaction().replace(R.id.fragment_container, restored).commitNow();
+                });
+                waitFor("restored season directory", () -> gridHas(activity, 2, "第01集"));
+                waitFor("restored second episode focus", () -> isGridItemFocused(activity, 1));
             }
         } finally {
             Urls.serverUrl = previousUrl;
@@ -297,6 +334,17 @@ public class MediaLibraryTest {
             FileModel first = adapter.getItem(0);
             matches.set(adapter.getItemCount() == count && first != null && firstName.equals(first.name)
                     && grid.findViewHolderForAdapterPosition(0) != null);
+        });
+        return matches.get();
+    }
+
+    private static boolean isGridItemFocused(ActivityScenario<MainActivity> activity, int position) {
+        AtomicBoolean matches = new AtomicBoolean();
+        activity.onActivity(a -> {
+            RecyclerView grid = a.findViewById(R.id.rv_grid);
+            if (grid != null && grid.getFocusedChild() != null) {
+                matches.set(grid.getChildAdapterPosition(grid.getFocusedChild()) == position);
+            }
         });
         return matches.get();
     }
