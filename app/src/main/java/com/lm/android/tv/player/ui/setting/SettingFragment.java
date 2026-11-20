@@ -20,6 +20,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.pm.PackageInfoCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -27,6 +28,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.lm.android.tv.player.R;
 import com.lm.android.tv.player.data.model.UpdateModel;
+import com.lm.android.tv.player.data.repository.UpdateRepository;
 import com.lm.android.tv.player.util.SharedPrefsHelper;
 
 /**
@@ -105,22 +107,27 @@ public class SettingFragment extends Fragment {
     }
 
     private void showUpdateDialog(UpdateModel update) {
-        if (update.versionCode <= getVersionCode()) {
+        long installedVersion = getVersionCode();
+        if (update.versionCode <= installedVersion) {
             Toast.makeText(getContext(), "已是最新版本", Toast.LENGTH_SHORT).show();
             return;
         }
 
         new AlertDialog.Builder(getContext())
                 .setTitle("检查更新")
-                .setMessage("当前版本：" + getVersionName() +
-                        "\n检测到新版本：" + update.versionName + "\n是否升级？")
+                .setMessage("当前版本：" + getVersionName() + "（" + installedVersion + "）"
+                        + "\n检测到新版本：" + update.versionName + "（" + update.versionCode + "）\n是否升级？")
                 .setPositiveButton("升级", (dialog, which) ->
-                        downloadApk(update.downloadUrl))
+                        downloadApk(UpdateRepository.proxyUrl(update.downloadUrl), update.downloadUrl))
                 .create()
                 .show();
     }
 
     private void downloadApk(String url) {
+        downloadApk(url, null);
+    }
+
+    private void downloadApk(String url, @Nullable String fallbackUrl) {
         if (getContext() == null) return;
         if (activeDownloadId >= 0 || SharedPrefsHelper.getLong(requireContext(),
                 SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1) >= 0) {
@@ -128,15 +135,23 @@ public class SettingFragment extends Fragment {
             return;
         }
 
-        Toast.makeText(getContext(), "开始下载...", Toast.LENGTH_SHORT).show();
         Context appContext = requireContext().getApplicationContext();
+        if (enqueueApk(appContext, url, fallbackUrl)) {
+            Toast.makeText(appContext, "开始下载...", Toast.LENGTH_SHORT).show();
+        } else if (fallbackUrl != null) {
+            downloadApk(fallbackUrl);
+        } else {
+            SharedPrefsHelper.saveUpdateDownload(appContext, -1, null);
+            Toast.makeText(appContext, "无法开始更新下载", Toast.LENGTH_SHORT).show();
+        }
+    }
 
+    private boolean enqueueApk(Context appContext, String url, @Nullable String fallbackUrl) {
         Uri downloadUri = url == null ? null : Uri.parse(url);
         if (downloadUri == null || downloadUri.getHost() == null
                 || !("http".equalsIgnoreCase(downloadUri.getScheme())
                 || "https".equalsIgnoreCase(downloadUri.getScheme()))) {
-            Toast.makeText(appContext, "更新地址无效", Toast.LENGTH_SHORT).show();
-            return;
+            return false;
         }
         try {
             DownloadManager.Request request = new DownloadManager.Request(downloadUri);
@@ -150,11 +165,11 @@ public class SettingFragment extends Fragment {
             unregisterDownloadReceiver();
             registerDownloadReceiver(appContext, dm);
             activeDownloadId = dm.enqueue(request);
-            SharedPrefsHelper.putLong(appContext, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, activeDownloadId);
+            SharedPrefsHelper.saveUpdateDownload(appContext, activeDownloadId, fallbackUrl);
+            return true;
         } catch (RuntimeException e) {
             unregisterDownloadReceiver();
-            SharedPrefsHelper.putLong(appContext, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
-            Toast.makeText(appContext, "无法开始更新下载", Toast.LENGTH_SHORT).show();
+            return false;
         }
     }
 
@@ -178,7 +193,7 @@ public class SettingFragment extends Fragment {
         DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
         if (id >= 0) dm.remove(id);
         unregisterDownloadReceiver();
-        SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+        SharedPrefsHelper.saveUpdateDownload(context, -1, null);
         installPermissionRequested = false;
         Toast.makeText(context, "已取消更新", Toast.LENGTH_SHORT).show();
     }
@@ -216,12 +231,19 @@ public class SettingFragment extends Fragment {
                 status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
             }
         }
-        if (status != DownloadManager.STATUS_SUCCESSFUL && status != DownloadManager.STATUS_FAILED) return;
+        if (!isAdded() || (status != DownloadManager.STATUS_SUCCESSFUL && status != DownloadManager.STATUS_FAILED)) return;
         unregisterDownloadReceiver();
-        if (status == DownloadManager.STATUS_SUCCESSFUL && isAdded()) installApk(context, id);
-        else {
-            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
-            if (isAdded()) Toast.makeText(context, "更新下载失败", Toast.LENGTH_SHORT).show();
+        if (status == DownloadManager.STATUS_SUCCESSFUL) {
+            installApk(context, id);
+        } else {
+            String fallbackUrl = SharedPrefsHelper.getUpdateFallbackUrl(context);
+            dm.remove(id);
+            SharedPrefsHelper.saveUpdateDownload(context, -1, null);
+            if (fallbackUrl != null) {
+                downloadApk(fallbackUrl);
+            } else {
+                Toast.makeText(context, "更新下载失败", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 
@@ -269,20 +291,20 @@ public class SettingFragment extends Fragment {
             installIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             try {
                 startActivity(installIntent);
-                SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+                SharedPrefsHelper.saveUpdateDownload(context, -1, null);
             } catch (RuntimeException e) {
                 Toast.makeText(context, "无法打开安装程序", Toast.LENGTH_LONG).show();
             }
         } else {
-            SharedPrefsHelper.putLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+            SharedPrefsHelper.saveUpdateDownload(context, -1, null);
             Toast.makeText(context, "找不到下载的安装包", Toast.LENGTH_LONG).show();
         }
     }
 
-    private int getVersionCode() {
+    private long getVersionCode() {
         try {
-            return requireContext().getPackageManager()
-                    .getPackageInfo(requireContext().getPackageName(), 0).versionCode;
+            return PackageInfoCompat.getLongVersionCode(requireContext().getPackageManager()
+                    .getPackageInfo(requireContext().getPackageName(), 0));
         } catch (Exception e) {
             return 0;
         }

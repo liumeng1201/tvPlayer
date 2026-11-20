@@ -223,6 +223,37 @@ public class UpdateDownloadTest {
         }
     }
 
+    @Test
+    public void failedProxyDownloadRetriesDirectlyOnce() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        SharedPrefsHelper.saveUpdateDownload(context, -1, null);
+        try (MockMediaServer server = new MockMediaServer();
+             ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            String baseUrl = server.baseUrl();
+            Method download = SettingFragment.class.getDeclaredMethod("downloadApk", String.class, String.class);
+            download.setAccessible(true);
+            activity.onActivity(a -> {
+                SettingFragment fragment = new SettingFragment();
+                a.getSupportFragmentManager().beginTransaction()
+                        .replace(R.id.fragment_container, fragment).commitNow();
+                try {
+                    download.invoke(fragment, baseUrl + "/missing.apk", baseUrl + "/direct.apk");
+                    assertEquals(baseUrl + "/direct.apk", SharedPrefsHelper.getUpdateFallbackUrl(context));
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                }
+            });
+            waitFor(() -> server.requested("/direct.apk"));
+            assertTrue(server.requested("/missing.apk"));
+            waitFor(() -> SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1) == -1);
+            assertNull(SharedPrefsHelper.getUpdateFallbackUrl(context));
+        } finally {
+            long id = SharedPrefsHelper.getLong(context, SharedPrefsHelper.KEY_UPDATE_DOWNLOAD_ID, -1);
+            if (id >= 0) ((DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE)).remove(id);
+            SharedPrefsHelper.saveUpdateDownload(context, -1, null);
+        }
+    }
+
     private static void waitFor(BooleanSupplier condition) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
         while (System.nanoTime() < deadline) {

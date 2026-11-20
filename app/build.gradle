@@ -2,6 +2,17 @@ plugins {
     id 'com.android.application'
 }
 
+def gitOutput = { String... args ->
+    providers.exec {
+        workingDir rootProject.projectDir
+        commandLine(['git'] + args.toList())
+    }.standardOutput.asText.get().trim()
+}
+if (gitOutput('rev-parse', '--is-shallow-repository') == 'true') {
+    throw new GradleException('A full Git history is required to compute versionCode. Run git fetch --unshallow.')
+}
+def gitVersionCode = 301 + gitOutput('rev-list', '--count', 'HEAD').toInteger()
+
 android {
     namespace 'com.lm.android.tv.player'
     compileSdk 35
@@ -10,7 +21,7 @@ android {
         applicationId "com.lm.android.tv.player"
         minSdk 26
         targetSdk 35
-        versionCode 301
+        versionCode gitVersionCode
         versionName "3.0"
         multiDexEnabled true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

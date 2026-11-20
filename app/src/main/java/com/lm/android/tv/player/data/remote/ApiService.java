@@ -33,13 +33,6 @@ public final class ApiService {
         }
     }
 
-    /**
-     * 获取更新信息
-     */
-    public static void fetchUpdateInfo(final ApiCallback<String> callback) {
-        get(Urls.serverUrl + "/update.json", callback, 0);
-    }
-
     private static Call get(String url, final ApiCallback<String> callback, long timeoutSeconds) {
         Log.d(TAG, "GET: " + url);
 

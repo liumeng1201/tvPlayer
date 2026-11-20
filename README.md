@@ -67,13 +67,15 @@
 
 播放器根据扩展名识别 SRT、WebVTT、SSA/ASS、TTML/XML 字幕；未配置字幕时直接播放视频。自动化播放测试使用 SRT，其他格式及具体设备效果需另行验证。
 
-设置页还会请求服务器根目录的 `/update.json`，通过 `versionCode`、`versionName` 和 `downloadUrl` 检查更新：
+## 应用更新
+
+设置页的「检查更新」查询 GitHub 最新正式 Release，并读取同一 Release 的 `update.json` 附件。Actions 从实际 APK 生成清单，并将它与签名后的 `tvPlayer.apk` 一起发布。
 
 ```json
-{"versionCode": 302, "versionName": "3.1", "downloadUrl": "http://192.168.1.248/app-update.apk"}
+{"versionCode": 340, "versionName": "3.0", "downloadUrl": "https://github.com/liumeng1201/tvPlayer/releases/download/v340/tvPlayer.apk"}
 ```
 
-版本号高于当前应用时，用户可选择下载并安装；APK 地址应为设备可访问的完整 URL。
+当 `versionCode` 更高时，设置页会提示升级。Release 查询、清单读取和 APK 下载优先使用 `https://gh-proxy.com`，请求或下载失败时再尝试直连 GitHub。下载和安装仍由用户确认。已安装的局域网更新版可以手动覆盖安装一次，或通过原局域网渠道获取首个 GitHub 更新版。
 
 ## 播放与观看限制
 
@@ -85,6 +87,8 @@
 ## 本地构建与测试
 
 准备 JDK 17、Gradle 8.7、Android SDK Platform 35，并在 Android Studio 或本地环境中配置 Android SDK 路径。项目目前只有 `gradle/wrapper/gradle-wrapper.properties`，**没有提交 `gradlew`、`gradlew.bat` 和 Wrapper JAR**；下面的命令使用本机安装的 Gradle：
+
+构建需要完整 Git 历史。`versionCode` 按 `301 + git rev-list --count HEAD` 生成，显示用的 `versionName` 在 `app/build.gradle` 中设置。
 
 ```sh
 # 构建签名后的 release APK
@@ -105,4 +109,4 @@ APK 默认输出到 `app/build/outputs/apk/release/`。设备测试需要已启�
 
 推送到 `master` 或手动运行时，[`release-apk.yml`](.github/workflows/release-apk.yml) 会构建 release APK，运行 release 单元测试、Android TV 模拟器设备测试和 Lint。自动触发默认使用 API 30；手动运行可选择 API 26、30 或 34。
 
-运行成功后，可在该次 Actions 运行页面的 **Artifacts** 中下载 `release-apk`，测试报告见 `test-reports`。两者均保留 **1 天**。实体电视上的遥控器、视频解码、真实局域网及 APK 安装仍需在对应环境验证。
+每次推送到 `master`，构建、测试和 Lint 通过后，Actions 会为该次推送的最新提交发布 `v<versionCode>`。同一提交重跑会复用发行版。手动运行用于构建和测试。正式 APK 和版本清单见仓库的 **Releases**，单次运行的 `release-apk` 和 `test-reports` 工件保留 **1 天**。

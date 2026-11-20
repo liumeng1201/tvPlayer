@@ -12,6 +12,7 @@ public final class SharedPrefsHelper {
 
     public static final String KEY_PLAY_MODE = "play_mode";
     public static final String KEY_UPDATE_DOWNLOAD_ID = "update_download_id";
+    private static final String KEY_UPDATE_FALLBACK_URL = "update_download_fallback_url";
     public static final String KEY_LAST_POSITION_PREFIX = "last_pos_";
     public static final String KEY_RESTART_HINT_COUNT = "restart_hint_count";
 
@@ -50,6 +51,15 @@ public final class SharedPrefsHelper {
 
     public static void putLong(Context context, String key, long value) {
         getPrefs(context).edit().putLong(key, value).apply();
+    }
+
+    public static void saveUpdateDownload(Context context, long id, String fallbackUrl) {
+        getPrefs(context).edit().putLong(KEY_UPDATE_DOWNLOAD_ID, id)
+                .putString(KEY_UPDATE_FALLBACK_URL, fallbackUrl).apply();
+    }
+
+    public static String getUpdateFallbackUrl(Context context) {
+        return getPrefs(context).getString(KEY_UPDATE_FALLBACK_URL, null);
     }
 
     public static int getLastPosition(Context context, String path) {

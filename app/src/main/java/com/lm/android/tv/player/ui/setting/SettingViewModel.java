@@ -12,6 +12,9 @@ import com.lm.android.tv.player.data.repository.UpdateRepository;
 import com.lm.android.tv.player.util.SharedPrefsHelper;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * 设置页面 ViewModel
@@ -19,6 +22,8 @@ import java.io.IOException;
 public class SettingViewModel extends AndroidViewModel {
 
     private final UpdateRepository updateRepository = new UpdateRepository();
+    private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
+    private Future<?> updateCheck;
     private final MutableLiveData<String[]> settingsLiveData = new MutableLiveData<>();
     private final MutableLiveData<UpdateModel> updateLiveData = new MutableLiveData<>();
     private final MutableLiveData<String> toastLiveData = new MutableLiveData<>();
@@ -56,25 +61,24 @@ public class SettingViewModel extends AndroidViewModel {
     }
 
     public void checkUpdate() {
-        updateRepository.checkUpdate(new UpdateRepository.UpdateCallback() {
-            @Override
-            public void onSuccess(String json) {
-                try {
-                    UpdateModel update = new com.google.gson.Gson().fromJson(json, UpdateModel.class);
-                    if (update == null || update.versionCode <= 0 || update.downloadUrl == null
-                            || update.downloadUrl.trim().isEmpty()) {
-                        throw new IllegalArgumentException("更新信息不完整");
-                    }
+        if (updateCheck != null && !updateCheck.isDone()) return;
+        updateCheck = updateExecutor.submit(() -> {
+            try {
+                UpdateModel update = updateRepository.checkUpdate();
+                if (update == null) {
+                    toastLiveData.postValue("暂未发布可用版本");
+                } else {
                     updateLiveData.postValue(update);
-                } catch (Exception e) {
-                    toastLiveData.postValue("解析更新信息失败");
                 }
-            }
-
-            @Override
-            public void onError(IOException e) {
-                toastLiveData.postValue("检查更新失败，请检查网络");
+            } catch (IOException e) {
+                toastLiveData.postValue("无法获取 GitHub 更新，请稍后重试");
             }
         });
+    }
+
+    @Override
+    protected void onCleared() {
+        updateExecutor.shutdownNow();
+        super.onCleared();
     }
 }
