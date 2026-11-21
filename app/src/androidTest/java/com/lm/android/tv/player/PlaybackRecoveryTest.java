@@ -66,7 +66,7 @@ public class PlaybackRecoveryTest {
             video.type = 1;
             video.name = file;
             video.url = file;
-            video.subtitle = subtitle;
+            video.subtitle = subtitle == null ? null : new String[]{subtitle};
             new ViewModelProvider(a).get(PlaybackQueueViewModel.class).setVideos(
                     reload ? Collections.emptyList() : Collections.singletonList(video));
             Bundle args = new Bundle();

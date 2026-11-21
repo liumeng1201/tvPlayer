@@ -99,6 +99,27 @@
         </LinearLayout>
     </FrameLayout>
 
+    <!-- 底部横向字幕选择面板（半透明蒙版） -->
+    <FrameLayout
+        android:id="@+id/bottom_subtitle_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#B3000000"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="24dp"
+        android:visibility="gone">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_subtitles"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipToPadding="false"
+            android:descendantFocusability="afterDescendants" />
+    </FrameLayout>
+
     <Button
         android:id="@+id/btn_retry_video"
         android:layout_width="wrap_content"

@@ -51,9 +51,15 @@ public final class FileRepository {
             if (file == null || isBlank(file.name) || file.type < 0 || file.type > 2
                     || (file.isDirectory() && (file.name.contains("/") || !isRelativePath(file.name)))
                     || (!file.isDirectory() && !isRelativePath(file.url))
-                    || (!isBlank(file.cover) && !isRelativePath(file.cover))
-                    || (!isBlank(file.subtitle) && !isRelativePath(file.subtitle))) {
+                    || (!isBlank(file.cover) && !isRelativePath(file.cover))) {
                 throw new IllegalArgumentException("目录条目无效");
+            }
+            if (file.subtitle != null) {
+                for (String sub : file.subtitle) {
+                    if (isBlank(sub) || !isRelativePath(sub)) {
+                        throw new IllegalArgumentException("目录条目无效");
+                    }
+                }
             }
         }
         return files;

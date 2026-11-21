@@ -14,7 +14,14 @@ import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 
+import androidx.media3.common.TrackGroup;
+import androidx.media3.common.TrackSelectionOverride;
+import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.common.Tracks;
+
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -46,33 +53,93 @@ public final class ExoPlayerManager {
     }
 
     public static void play(Context context, String url) {
-        play(context, url, null);
+        play(context, url, (List<String>) null);
     }
 
     public static void play(Context context, String url, @Nullable String subtitleUrl) {
-        play(context, url, subtitleUrl, 0, true);
+        List<String> list = (subtitleUrl == null || subtitleUrl.trim().isEmpty())
+                ? null : Collections.singletonList(subtitleUrl);
+        play(context, url, list, 0, 0, true);
+    }
+
+    public static void play(Context context, String url, @Nullable List<String> subtitleUrls) {
+        play(context, url, subtitleUrls, 0, 0, true);
     }
 
     public static void play(Context context, String url, @Nullable String subtitleUrl,
                             long positionMs, boolean playWhenReady) {
+        List<String> list = (subtitleUrl == null || subtitleUrl.trim().isEmpty())
+                ? null : Collections.singletonList(subtitleUrl);
+        play(context, url, list, 0, positionMs, playWhenReady);
+    }
+
+    public static void play(Context context, String url, @Nullable List<String> subtitleUrls,
+                            int defaultSubtitleIndex, long positionMs, boolean playWhenReady) {
         ExoPlayer player = getInstance(context);
         MediaItem.Builder media = new MediaItem.Builder().setUri(url);
-        if (subtitleUrl != null && !subtitleUrl.trim().isEmpty()) {
-            Uri subtitleUri = Uri.parse(subtitleUrl);
-            String mimeType = subtitleMimeType(subtitleUri.getLastPathSegment());
-            if (mimeType != null) {
-                MediaItem.SubtitleConfiguration subtitle = new MediaItem.SubtitleConfiguration.Builder(subtitleUri)
-                        .setMimeType(mimeType)
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build();
-                media.setSubtitleConfigurations(Collections.singletonList(subtitle));
-            } else {
-                Log.w("ExoPlayerManager", "Unsupported subtitle format: " + subtitleUrl);
+        if (subtitleUrls != null && !subtitleUrls.isEmpty()) {
+            List<MediaItem.SubtitleConfiguration> configs = new ArrayList<>();
+            for (int i = 0; i < subtitleUrls.size(); i++) {
+                String subUrl = subtitleUrls.get(i);
+                if (subUrl == null || subUrl.trim().isEmpty()) continue;
+                Uri subtitleUri = Uri.parse(subUrl);
+                String mimeType = subtitleMimeType(subtitleUri.getLastPathSegment());
+                if (mimeType != null) {
+                    MediaItem.SubtitleConfiguration subtitle = new MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                            .setMimeType(mimeType)
+                            .setId(String.valueOf(i))
+                            .setSelectionFlags(i == defaultSubtitleIndex ? C.SELECTION_FLAG_DEFAULT : 0)
+                            .build();
+                    configs.add(subtitle);
+                } else {
+                    Log.w("ExoPlayerManager", "Unsupported subtitle format: " + subUrl);
+                }
+            }
+            if (!configs.isEmpty()) {
+                media.setSubtitleConfigurations(configs);
             }
         }
         player.setPlayWhenReady(playWhenReady);
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters()
+                .buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .build());
         player.setMediaItem(media.build(), positionMs);
         player.prepare();
+    }
+
+    @OptIn(markerClass = UnstableApi.class)
+    public static void selectSubtitle(int targetIndex) {
+        ExoPlayer player = instance;
+        if (player == null) return;
+        Tracks tracks = player.getCurrentTracks();
+        int textTrackCounter = 0;
+        TrackGroup targetGroup = null;
+        int targetTrackIndex = -1;
+
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() == C.TRACK_TYPE_TEXT) {
+                TrackGroup mediaTrackGroup = group.getMediaTrackGroup();
+                for (int i = 0; i < mediaTrackGroup.length; i++) {
+                    if (textTrackCounter == targetIndex) {
+                        targetGroup = mediaTrackGroup;
+                        targetTrackIndex = i;
+                        break;
+                    }
+                    textTrackCounter++;
+                }
+                if (targetGroup != null) break;
+            }
+        }
+
+        TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
+        builder.clearOverridesOfType(C.TRACK_TYPE_TEXT);
+        if (targetGroup != null && targetTrackIndex >= 0) {
+            builder.setOverrideForType(new TrackSelectionOverride(targetGroup, targetTrackIndex));
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
+        }
+        player.setTrackSelectionParameters(builder.build());
     }
 
     @Nullable

@@ -4,6 +4,7 @@ import static org.junit.Assert.*;
 
 import com.lm.android.tv.player.data.model.FileModel;
 import com.lm.android.tv.player.data.repository.FileRepository;
+import com.lm.android.tv.player.util.SubtitleUtils;
 import com.lm.android.tv.player.util.Urls;
 
 import org.junit.Test;
@@ -28,17 +29,24 @@ public class MediaDataTest {
     @Test
     public void parsesDirectoryVideoAndImageEntries() {
         String json = "[{\"name\":\"动画\",\"type\":0},"
-                + "{\"name\":\"一集\",\"type\":1,\"url\":\"一集.mp4\",\"subtitle\":\"一集.srt\"},"
+                + "{\"name\":\"一集\",\"type\":1,\"url\":\"一集.mp4\",\"subtitle\":[\"一集-中文字幕.srt\",\"一集-英文字幕.srt\"]},"
+                + "{\"name\":\"二集\",\"type\":1,\"url\":\"二集.mp4\",\"subtitle\":\"二集.srt\"},"
                 + "{\"name\":\"封面\",\"type\":2,\"url\":\"封面.jpg\"}]";
         List<FileModel> files = FileRepository.parseFiles(json);
-        assertEquals(3, files.size());
+        assertEquals(4, files.size());
         assertTrue(files.get(0).isDirectory());
         assertTrue(files.get(1).isVideo());
         assertEquals("一集.mp4", files.get(1).url);
-        assertEquals("一集.srt", files.get(1).subtitle);
+        assertArrayEquals(new String[]{"一集-中文字幕.srt", "一集-英文字幕.srt"}, files.get(1).subtitle);
+        assertTrue(files.get(1).hasSubtitles());
+
+        // 兼容单字符串格式
+        assertArrayEquals(new String[]{"二集.srt"}, files.get(2).subtitle);
+
         assertNull(files.get(0).subtitle);
-        assertNull(files.get(2).subtitle);
-        assertTrue(files.get(2).isImage());
+        assertFalse(files.get(0).hasSubtitles());
+        assertNull(files.get(3).subtitle);
+        assertTrue(files.get(3).isImage());
     }
 
     @Test
@@ -49,5 +57,18 @@ public class MediaDataTest {
                 () -> FileRepository.parseFiles("[{\"name\":\"动画\"}]"));
         assertThrows(IllegalArgumentException.class,
                 () -> FileRepository.parseFiles("[{\"name\":\"一集\",\"type\":1}]"));
+        assertThrows(IllegalArgumentException.class,
+                () -> FileRepository.parseFiles("[{\"name\":\"一集\",\"type\":1,\"url\":\"一集.mp4\",\"subtitle\":[\"../hack.srt\"]}]"));
+    }
+
+    @Test
+    public void extractsSubtitleDisplayNames() {
+        assertEquals("-中文字幕", SubtitleUtils.extractSubtitleDisplayName("aaa.mp4", "aaa-中文字幕.srt"));
+        assertEquals("-英文字幕", SubtitleUtils.extractSubtitleDisplayName("aaa.mp4", "aaa-英文字幕.srt"));
+        assertEquals("-双语", SubtitleUtils.extractSubtitleDisplayName("/path/to/aaa.mp4", "aaa-双语.vtt"));
+        assertEquals("aaa", SubtitleUtils.extractSubtitleDisplayName("aaa.mp4", "aaa.srt"));
+        assertEquals("other", SubtitleUtils.extractSubtitleDisplayName("aaa.mp4", "other.ass"));
+        assertEquals("", SubtitleUtils.extractSubtitleDisplayName("aaa.mp4", null));
+        assertEquals("", SubtitleUtils.extractSubtitleDisplayName("aaa.mp4", ""));
     }
 }

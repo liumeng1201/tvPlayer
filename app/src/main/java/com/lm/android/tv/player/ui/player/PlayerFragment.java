@@ -18,6 +18,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.common.Player;
@@ -25,6 +26,8 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.ui.PlayerView;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.lm.android.tv.player.R;
 import com.lm.android.tv.player.data.db.AppDatabase;
@@ -35,6 +38,7 @@ import com.lm.android.tv.player.data.repository.FileRepository;
 import com.lm.android.tv.player.player.ExoPlayerManager;
 import com.lm.android.tv.player.util.ParentalControlManager;
 import com.lm.android.tv.player.util.SharedPrefsHelper;
+import com.lm.android.tv.player.util.SubtitleUtils;
 import com.lm.android.tv.player.util.Urls;
 
 import java.util.ArrayList;
@@ -64,6 +68,14 @@ public class PlayerFragment extends Fragment {
     private TextView tvProgressTotal;
     private TextView retry;
 
+    // 字幕面板相关
+    private View bottomSubtitleContainer;
+    private RecyclerView rvSubtitles;
+    private SubtitleAdapter subtitleAdapter;
+    private boolean isSubtitlePanelVisible;
+    private Runnable hideSubtitlePanelRunnable;
+    private static final long SUBTITLE_PANEL_TIMEOUT_MS = 5000;
+
     private String path;
     private ArrayList<FileModel> videoList = new ArrayList<>();
     private ArrayList<Integer> gridPositions = new ArrayList<>();
@@ -92,7 +104,9 @@ public class PlayerFragment extends Fragment {
     private Call queueRequest;
     private boolean queueLoadFailed;
     private String queueRestoreError;
-    private String currentSubtitleUrl;
+    private final ArrayList<String> currentSubtitleUrls = new ArrayList<>();
+    private final ArrayList<String> currentSubtitleDisplayNames = new ArrayList<>();
+    private int currentSubtitleIndex = 0;
     private boolean skipSubtitle;
 
     // 续播相关
@@ -168,6 +182,14 @@ public class PlayerFragment extends Fragment {
         tvProgressTotal = view.findViewById(R.id.tv_progress_total);
         retry = view.findViewById(R.id.btn_retry_video);
         retry.setOnClickListener(v -> retryPlayback());
+
+        bottomSubtitleContainer = view.findViewById(R.id.bottom_subtitle_container);
+        rvSubtitles = view.findViewById(R.id.rv_subtitles);
+        if (rvSubtitles != null) {
+            rvSubtitles.setLayoutManager(new LinearLayoutManager(getContext(), LinearLayoutManager.HORIZONTAL, false));
+            subtitleAdapter = new SubtitleAdapter();
+            rvSubtitles.setAdapter(subtitleAdapter);
+        }
 
         pendingInitialPlayback = true;
         if (videoList.isEmpty()) {
@@ -318,9 +340,24 @@ public class PlayerFragment extends Fragment {
         FileModel item = videoList.get(currentIndex);
         String name = item.name;
         String url = Urls.buildEncodedFileUrl(path, item.url);
-        if (!url.equals(currentVideoUrl)) skipSubtitle = false;
-        currentSubtitleUrl = skipSubtitle || item.subtitle == null || item.subtitle.trim().isEmpty()
-                ? null : Urls.buildEncodedFileUrl(path, item.subtitle);
+        if (!url.equals(currentVideoUrl)) {
+            skipSubtitle = false;
+            currentSubtitleIndex = 0;
+            hideSubtitlePanel();
+        }
+        currentSubtitleUrls.clear();
+        currentSubtitleDisplayNames.clear();
+        if (!skipSubtitle && item.subtitle != null) {
+            for (String sub : item.subtitle) {
+                if (sub != null && !sub.trim().isEmpty()) {
+                    currentSubtitleUrls.add(Urls.buildEncodedFileUrl(path, sub));
+                    currentSubtitleDisplayNames.add(SubtitleUtils.extractSubtitleDisplayName(item.url, sub));
+                }
+            }
+        }
+        if (currentSubtitleIndex >= currentSubtitleUrls.size()) {
+            currentSubtitleIndex = 0;
+        }
         currentVideoUrl = url;
         playbackGeneration++;
         clearResumeTimeout();
@@ -356,18 +393,23 @@ public class PlayerFragment extends Fragment {
         if (playerListener == null) setupExoPlayer();
         resumeLookupPending = startPosition < 0;
         playAfterResumeLookup = startPlaying;
-        ExoPlayerManager.play(requireContext(), url, currentSubtitleUrl,
-                Math.max(0, startPosition), startPlaying && !resumeLookupPending);
+        ExoPlayerManager.play(requireContext(), url, currentSubtitleUrls,
+                currentSubtitleIndex, Math.max(0, startPosition), startPlaying && !resumeLookupPending);
         if (resumeLookupPending) checkResumePlayback();
     }
 
     @OptIn(markerClass = UnstableApi.class)
     private boolean isSubtitleHttpError(PlaybackException error) {
-        if (currentSubtitleUrl == null) return false;
+        if (currentSubtitleUrls.isEmpty()) return false;
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof HttpDataSource.HttpDataSourceException) {
                 HttpDataSource.HttpDataSourceException httpError = (HttpDataSource.HttpDataSourceException) cause;
-                return currentSubtitleUrl.equals(httpError.dataSpec.uri.toString());
+                String failedUri = httpError.dataSpec.uri.toString();
+                for (String subUrl : currentSubtitleUrls) {
+                    if (subUrl != null && subUrl.equals(failedUri)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -689,6 +731,7 @@ public class PlayerFragment extends Fragment {
     // ===================== 进度条控制 =====================
 
     private void showProgress(boolean show) {
+        if (isSubtitlePanelVisible && show) return;
         if (isProgressVisible == show) return;
         isProgressVisible = show;
 
@@ -746,9 +789,111 @@ public class PlayerFragment extends Fragment {
         }
     }
 
+    // ===================== 字幕面板控制 =====================
+
+    private void showSubtitlePanel() {
+        if (currentSubtitleUrls.isEmpty()) return;
+        showProgress(false);
+        if (bottomSubtitleContainer != null) {
+            bottomSubtitleContainer.setVisibility(View.VISIBLE);
+        }
+        isSubtitlePanelVisible = true;
+        if (subtitleAdapter != null) {
+            subtitleAdapter.setData(currentSubtitleDisplayNames, currentSubtitleIndex);
+        }
+        if (rvSubtitles != null) {
+            rvSubtitles.scrollToPosition(currentSubtitleIndex);
+            rvSubtitles.post(() -> {
+                if (!isSubtitlePanelVisible || rvSubtitles == null) return;
+                RecyclerView.ViewHolder vh = rvSubtitles.findViewHolderForAdapterPosition(currentSubtitleIndex);
+                if (vh != null) {
+                    vh.itemView.requestFocus();
+                } else {
+                    rvSubtitles.requestFocus();
+                }
+            });
+        }
+        resetSubtitlePanelTimeout();
+    }
+
+    private void hideSubtitlePanel() {
+        cancelSubtitlePanelTimeout();
+        if (!isSubtitlePanelVisible) return;
+        isSubtitlePanelVisible = false;
+        if (bottomSubtitleContainer != null) {
+            bottomSubtitleContainer.setVisibility(View.GONE);
+        }
+        restorePlaybackFocus();
+    }
+
+    private void resetSubtitlePanelTimeout() {
+        cancelSubtitlePanelTimeout();
+        if (!isSubtitlePanelVisible) return;
+        hideSubtitlePanelRunnable = this::hideSubtitlePanel;
+        handler.postDelayed(hideSubtitlePanelRunnable, SUBTITLE_PANEL_TIMEOUT_MS);
+    }
+
+    private void cancelSubtitlePanelTimeout() {
+        if (hideSubtitlePanelRunnable != null) {
+            handler.removeCallbacks(hideSubtitlePanelRunnable);
+            hideSubtitlePanelRunnable = null;
+        }
+    }
+
+    private void onSubtitleItemClicked(int position) {
+        if (position < 0 || position >= currentSubtitleUrls.size()) return;
+        currentSubtitleIndex = position;
+        if (subtitleAdapter != null) {
+            subtitleAdapter.setSelectedIndex(position);
+        }
+        ExoPlayerManager.selectSubtitle(position);
+        resetSubtitlePanelTimeout();
+    }
+
     // ===================== 遥控器按键处理 =====================
 
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // 菜单键：若存在字幕，切换字幕面板显隐
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.getRepeatCount() > 0) return true;
+            if (!currentSubtitleUrls.isEmpty()) {
+                if (isSubtitlePanelVisible) {
+                    hideSubtitlePanel();
+                } else {
+                    showSubtitlePanel();
+                }
+            }
+            return true;
+        }
+
+        // 字幕面板显示时的交互处理
+        if (isSubtitlePanelVisible) {
+            resetSubtitlePanelTimeout();
+            if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+                hideSubtitlePanel();
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return false;
+            }
+            boolean confirmKey = keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
+                    || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER;
+            if (confirmKey) {
+                View focused = rvSubtitles != null ? rvSubtitles.getFocusedChild() : null;
+                if (focused != null && rvSubtitles != null) {
+                    int pos = rvSubtitles.getChildAdapterPosition(focused);
+                    if (pos != RecyclerView.NO_POSITION) {
+                        onSubtitleItemClicked(pos);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         boolean confirm = keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
                 || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER;
         boolean playbackKey = confirm || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
@@ -880,6 +1025,8 @@ public class PlayerFragment extends Fragment {
         playbackGeneration++;
         resumeLookupPending = false;
         clearResumeTimeout();
+        cancelSubtitlePanelTimeout();
+        hideSubtitlePanel();
         ExoPlayerManager.removeListener(playerListener);
         playerListener = null;
         playerView.setPlayer(null);
@@ -903,6 +1050,66 @@ public class PlayerFragment extends Fragment {
         handler.removeCallbacksAndMessages(null);
         playerView = null;
         retry = null;
+        if (rvSubtitles != null) {
+            rvSubtitles.setAdapter(null);
+            rvSubtitles = null;
+        }
+        bottomSubtitleContainer = null;
+        subtitleAdapter = null;
         super.onDestroyView();
+    }
+
+    // ===================== 字幕列表适配器 =====================
+
+    private class SubtitleAdapter extends RecyclerView.Adapter<SubtitleAdapter.ViewHolder> {
+        private final List<String> names = new ArrayList<>();
+        private int selectedIndex = 0;
+
+        void setData(List<String> newNames, int selected) {
+            names.clear();
+            if (newNames != null) names.addAll(newNames);
+            selectedIndex = selected;
+            notifyDataSetChanged();
+        }
+
+        void setSelectedIndex(int index) {
+            if (selectedIndex != index) {
+                int old = selectedIndex;
+                selectedIndex = index;
+                notifyItemChanged(old);
+                notifyItemChanged(selectedIndex);
+            }
+        }
+
+        @NonNull
+        @Override
+        public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.item_player_subtitle, parent, false);
+            return new ViewHolder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+            String name = names.get(position);
+            holder.tvName.setText(name);
+            boolean isSelected = (position == selectedIndex);
+            holder.tvName.setTextColor(ContextCompat.getColor(holder.itemView.getContext(),
+                    isSelected ? R.color.text_select : R.color.text_normal));
+            holder.itemView.setOnClickListener(v -> onSubtitleItemClicked(holder.getBindingAdapterPosition()));
+        }
+
+        @Override
+        public int getItemCount() {
+            return names.size();
+        }
+
+        class ViewHolder extends RecyclerView.ViewHolder {
+            final TextView tvName;
+            ViewHolder(View itemView) {
+                super(itemView);
+                tvName = itemView.findViewById(R.id.tv_subtitle_name);
+            }
+        }
     }
 }
