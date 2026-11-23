@@ -100,10 +100,11 @@ public final class ExoPlayerManager {
             }
         }
         player.setPlayWhenReady(playWhenReady);
+        boolean hasSelectedSubtitle = defaultSubtitleIndex >= 0;
         player.setTrackSelectionParameters(player.getTrackSelectionParameters()
                 .buildUpon()
                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !hasSelectedSubtitle)
                 .build());
         player.setMediaItem(media.build(), positionMs);
         player.prepare();
@@ -113,6 +114,14 @@ public final class ExoPlayerManager {
     public static void selectSubtitle(int targetIndex) {
         ExoPlayer player = instance;
         if (player == null) return;
+        TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
+        builder.clearOverridesOfType(C.TRACK_TYPE_TEXT);
+        if (targetIndex < 0) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true);
+            player.setTrackSelectionParameters(builder.build());
+            return;
+        }
+
         Tracks tracks = player.getCurrentTracks();
         int textTrackCounter = 0;
         TrackGroup targetGroup = null;
@@ -133,8 +142,6 @@ public final class ExoPlayerManager {
             }
         }
 
-        TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
-        builder.clearOverridesOfType(C.TRACK_TYPE_TEXT);
         if (targetGroup != null && targetTrackIndex >= 0) {
             builder.setOverrideForType(new TrackSelectionOverride(targetGroup, targetTrackIndex));
             builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);

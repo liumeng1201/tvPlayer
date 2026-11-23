@@ -68,6 +68,7 @@ public class MediaLibraryTest {
                 assertTrue(server.requested("/动画/files.json"));
                 assertTrue(server.requested("/动画/第一季/files.json"));
                 assertTrue(server.requested("/动画/第一季/第01集.mp4"));
+                activity.onActivity(a -> ExoPlayerManager.selectSubtitle(0));
                 waitFor("first episode subtitle", () -> {
                     AtomicBoolean hasSubtitle = new AtomicBoolean();
                     activity.onActivity(a -> {

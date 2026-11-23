@@ -9,4 +9,5 @@
     <string name="retry_playback">播放失败，按确认键重试</string>
     <string name="retry_playlist">播放列表加载失败，按确认键重试</string>
     <string name="subtitle_unavailable">字幕加载失败，继续播放视频</string>
+    <string name="subtitle_none">无字幕</string>
 </resources>

@@ -355,7 +355,10 @@ public class PlayerFragment extends Fragment {
                 }
             }
         }
-        if (currentSubtitleIndex >= currentSubtitleUrls.size()) {
+        if (!currentSubtitleUrls.isEmpty()) {
+            currentSubtitleDisplayNames.add(0, getString(R.string.subtitle_none));
+        }
+        if (currentSubtitleIndex >= currentSubtitleDisplayNames.size()) {
             currentSubtitleIndex = 0;
         }
         currentVideoUrl = url;
@@ -393,8 +396,9 @@ public class PlayerFragment extends Fragment {
         if (playerListener == null) setupExoPlayer();
         resumeLookupPending = startPosition < 0;
         playAfterResumeLookup = startPlaying;
+        int targetTrackIndex = currentSubtitleIndex == 0 ? -1 : (currentSubtitleIndex - 1);
         ExoPlayerManager.play(requireContext(), url, currentSubtitleUrls,
-                currentSubtitleIndex, Math.max(0, startPosition), startPlaying && !resumeLookupPending);
+                targetTrackIndex, Math.max(0, startPosition), startPlaying && !resumeLookupPending);
         if (resumeLookupPending) checkResumePlayback();
     }
 
@@ -841,12 +845,13 @@ public class PlayerFragment extends Fragment {
     }
 
     private void onSubtitleItemClicked(int position) {
-        if (position < 0 || position >= currentSubtitleUrls.size()) return;
+        if (position < 0 || position >= currentSubtitleDisplayNames.size()) return;
         currentSubtitleIndex = position;
         if (subtitleAdapter != null) {
             subtitleAdapter.setSelectedIndex(position);
         }
-        ExoPlayerManager.selectSubtitle(position);
+        int targetTrackIndex = position == 0 ? -1 : (position - 1);
+        ExoPlayerManager.selectSubtitle(targetTrackIndex);
         resetSubtitlePanelTimeout();
     }
 
