@@ -144,8 +144,8 @@ public final class ExoPlayerManager {
 
         if (targetGroup != null && targetTrackIndex >= 0) {
             builder.setOverrideForType(new TrackSelectionOverride(targetGroup, targetTrackIndex));
-            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
         }
+        builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
         player.setTrackSelectionParameters(builder.build());
     }
 

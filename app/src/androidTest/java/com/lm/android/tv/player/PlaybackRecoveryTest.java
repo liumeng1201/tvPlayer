@@ -82,6 +82,7 @@ public class PlaybackRecoveryTest {
     @Test public void missingSubtitleDoesNotBlockTheVideo() throws Exception {
         try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
             open(activity, "第01集.mp4", "缺失字幕.srt", false);
+            waitFor(() -> playing(activity));
             activity.onActivity(a -> ExoPlayerManager.selectSubtitle(0));
             waitFor(() -> server.requested(PATH + "缺失字幕.srt"));
             waitFor(() -> {
